@@ -1,4 +1,4 @@
-const CACHE_NAME = "coach-ingles-v2";
+const CACHE_NAME = "coach-ingles-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -29,20 +29,21 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first: sempre tenta pegar a versão mais nova primeiro (o app está
+// em desenvolvimento ativo e ela precisa receber as correções assim que
+// publicadas). Só usa o cache como fallback quando estiver mesmo offline
+// (ex.: um trecho sem sinal enquanto ela dirige).
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
