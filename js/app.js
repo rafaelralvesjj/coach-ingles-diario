@@ -45,12 +45,32 @@ let paused = false;
 let skipCurrentStep = null;
 let currentReplay = null;
 
-// --- Controle de "tarefa concluída sem ajuda" ---
-// Só marcamos uma cena como concluída quando ela responde tudo sozinha, no
-// tempo certo, sem precisar de nenhuma dica. Pular um passo durante o
-// diálogo (não durante o treino) também conta como ajuda.
+// --- Controle de "tarefa concluída" — 3 critérios: sem ajuda, dentro do
+// tempo, e qualidade de pronúncia mínima. Pular um passo durante o diálogo
+// (não durante o treino) também conta como ajuda.
+const TASK_TIME_LIMIT_MS = 20 * 60 * 1000; // 20 minutos
+const QUALITY_PASS_PERCENT = 70; // % mínimo de aproveitamento de pronúncia
+
 let inDialoguePhase = false;
 let sceneHadHelp = false;
+let sceneNotVerifiable = false;
+let sceneStartTime = 0;
+let responseQualities = []; // 'bom' | 'medio' | 'ruim', um por frase respondida
+
+function classifyQuality(result) {
+  if (!result || !result.supported) return "ruim";
+  if (!result.startedSpeaking) return "ruim";
+  const ratio = result.ratio || 0;
+  if (ratio >= 0.85) return "bom";
+  if (ratio >= 0.5) return "medio";
+  return "ruim";
+}
+
+function qualityPercent(qualities) {
+  if (qualities.length === 0) return 100;
+  const points = qualities.reduce((sum, q) => sum + (q === "bom" ? 2 : q === "medio" ? 1 : 0), 0);
+  return (points / (qualities.length * 2)) * 100;
+}
 
 function setPauseUI() {
   el("btn-pause").textContent = paused ? "▶" : "⏸";
@@ -318,6 +338,9 @@ async function startScene(ambiente, scene, isReview) {
   paused = false;
   setPauseUI();
   sceneHadHelp = false;
+  sceneNotVerifiable = false;
+  sceneStartTime = Date.now();
+  responseQualities = [];
   showScreen("lesson");
   const beats = activeBeatsFor(ambiente, scene);
   await runTraining(ambiente, scene, beats);
@@ -376,10 +399,13 @@ async function runDialogue(ambiente, scene, beats) {
     const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 1500, timeoutMs: 7000 }));
     setMic(false);
 
+    responseQualities.push(classifyQuality(result));
+
     if (!result || !result.supported) {
-      // sem reconhecimento de fala no navegador: modo "repita comigo",
-      // nunca pode ser certificado como "sem ajuda".
-      sceneHadHelp = true;
+      // sem reconhecimento de fala no navegador: modo "repita comigo".
+      // Não dá pra verificar o que ela falou, então essa cena nunca pode
+      // ser certificada como tarefa concluída neste aparelho.
+      sceneNotVerifiable = true;
       setCaption(character.name, beat.response_en);
       setFeedback("Repita em voz alta.");
       await runStep(() => say(beat.response_en, { lang: "en-US" }));
@@ -413,13 +439,18 @@ async function runDialogue(ambiente, scene, beats) {
       setFeedback("✅ Perfeito!");
       await runStep(() => say("Perfect!", { lang: "en-US" }));
     } else {
-      // ela tentou, mas não bateu com a frase esperada — também conta como ajuda
-      sceneHadHelp = true;
+      // ela tentou sozinha, só não bateu certinho — isso pesa na qualidade
+      // da pronúncia (critério 3), mas não conta como "ajuda" (critério 1):
+      // ninguém interveio, ela só errou por conta própria.
       setCaption(character.name, beat.response_en);
       setFeedback(`Quase lá! A frase é: "${beat.response_en}"`);
       await runStep(() => say(beat.response_en, { lang: "en-US" }));
     }
   }
+}
+
+function formatMinutes(ms) {
+  return Math.round((ms / 60000) * 10) / 10;
 }
 
 async function runWrapup(ambiente, scene, isReview) {
@@ -429,25 +460,44 @@ async function runWrapup(ambiente, scene, isReview) {
   setCaption("", "");
   setFeedback("");
 
-  const wasMasteredBefore = state.completedScenes.includes(scene.id);
-  const justMastered = !sceneHadHelp && !wasMasteredBefore;
+  const elapsedMs = Date.now() - sceneStartTime;
+  const elapsedMin = formatMinutes(elapsedMs);
+  const percent = Math.round(qualityPercent(responseQualities));
+
+  const passedHelp = !sceneHadHelp;
+  const passedTime = elapsedMs <= TASK_TIME_LIMIT_MS;
+  const passedQuality = percent >= QUALITY_PASS_PERCENT;
+  const taskCompleted = passedHelp && passedTime && passedQuality && !sceneNotVerifiable;
 
   if (!isReview) recordDailyPractice(state);
-  if (!sceneHadHelp) markSceneMastered(state, scene.id);
+  if (taskCompleted) markSceneMastered(state, scene.id);
   else saveState(state);
 
-  if (sceneHadHelp) {
-    await runStep(() => say(`${scene.recap_pt} Você teve ajuda dessa vez — tenta de novo pra concluir essa cena sem nenhuma ajuda!`, { lang: "pt-BR" }));
+  let recapMsg;
+  if (taskCompleted) {
+    recapMsg = `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos, com ${percent}% de qualidade na pronúncia!`;
   } else {
-    await runStep(() => say(`${scene.recap_pt} E o melhor: você fez tudo sozinha, sem nenhuma ajuda!`, { lang: "pt-BR" }));
+    const reasons = [];
+    if (sceneNotVerifiable) reasons.push("seu navegador não consegue verificar sua pronúncia, então essa cena não pode virar tarefa concluída neste aparelho");
+    if (!passedHelp) reasons.push("você precisou de ajuda em algum momento");
+    if (!passedTime) reasons.push(`você passou de 20 minutos (levou ${elapsedMin} minutos)`);
+    if (!passedQuality) reasons.push(`sua pronúncia ficou em ${percent}%, abaixo dos ${QUALITY_PASS_PERCENT}% necessários`);
+    recapMsg = `${scene.recap_pt} Essa tarefa ainda não fechou porque ${reasons.join(", e ")}. Continue praticando!`;
   }
+  await runStep(() => say(recapMsg, { lang: "pt-BR" }));
 
   const streak = getStreak(state);
-  el("done-title").textContent = sceneHadHelp ? "Cena praticada" : (justMastered ? "Tarefa concluída! 🏆" : "Cena dominada de novo! 🏆");
+  el("done-title").textContent = taskCompleted ? "Tarefa concluída! 🏆" : "Cena praticada";
   el("done-streak").textContent = `Sequência: ${streak} dia${streak === 1 ? "" : "s"}`;
-  el("done-recap").textContent = sceneHadHelp
-    ? `${scene.recap_pt} Você teve ajuda — pratique de novo sem ajuda pra concluir essa tarefa.`
-    : `${scene.recap_pt} Você concluiu sem nenhuma ajuda!`;
+  el("done-recap").textContent = recapMsg;
+
+  const checklist = el("task-checklist");
+  checklist.innerHTML = `
+    <div class="check-row ${passedHelp ? "ok" : "fail"}">${passedHelp ? "✅" : "❌"} Sem ajuda</div>
+    <div class="check-row ${passedTime ? "ok" : "fail"}">${passedTime ? "✅" : "❌"} Dentro de 20 min (${elapsedMin} min)</div>
+    <div class="check-row ${passedQuality ? "ok" : "fail"}">${passedQuality ? "✅" : "❌"} Pronúncia: ${percent}%</div>
+  `;
+
   showScreen("done");
 }
 

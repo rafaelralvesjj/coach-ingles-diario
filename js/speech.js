@@ -68,7 +68,7 @@ export function stopSpeaking() {
 export function listen(targetPhrase, { timeoutMs = 6000 } = {}) {
   if (!sttAvailable) {
     return new Promise((resolve) => {
-      setTimeout(() => resolve({ supported: false, transcript: "", matched: null }), timeoutMs);
+      setTimeout(() => resolve({ supported: false, transcript: "", matched: null, ratio: 0 }), timeoutMs);
     });
   }
   return new Promise((resolve) => {
@@ -86,20 +86,20 @@ export function listen(targetPhrase, { timeoutMs = 6000 } = {}) {
       resolve(result);
     };
 
-    const timer = setTimeout(() => finish({ supported: true, transcript: "", matched: false }), timeoutMs);
+    const timer = setTimeout(() => finish({ supported: true, transcript: "", matched: false, ratio: 0 }), timeoutMs);
 
     recognition.onresult = (event) => {
       const alternatives = Array.from(event.results[0]).map(r => r.transcript);
-      const matched = alternatives.some(alt => fuzzyMatch(alt, targetPhrase));
-      finish({ supported: true, transcript: alternatives[0] || "", matched });
+      const ratio = bestRatio(alternatives, targetPhrase);
+      finish({ supported: true, transcript: alternatives[0] || "", matched: ratio >= 0.6, ratio });
     };
-    recognition.onerror = () => finish({ supported: true, transcript: "", matched: false });
-    recognition.onend = () => finish({ supported: true, transcript: "", matched: false });
+    recognition.onerror = () => finish({ supported: true, transcript: "", matched: false, ratio: 0 });
+    recognition.onend = () => finish({ supported: true, transcript: "", matched: false, ratio: 0 });
 
     try {
       recognition.start();
     } catch {
-      finish({ supported: true, transcript: "", matched: false });
+      finish({ supported: true, transcript: "", matched: false, ratio: 0 });
     }
   });
 }
@@ -112,7 +112,7 @@ export function listen(targetPhrase, { timeoutMs = 6000 } = {}) {
 export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 7000 } = {}) {
   if (!sttAvailable) {
     return new Promise((resolve) => {
-      setTimeout(() => resolve({ supported: false, startedSpeaking: false, transcript: "", matched: null }), timeoutMs);
+      setTimeout(() => resolve({ supported: false, startedSpeaking: false, transcript: "", matched: null, ratio: 0 }), timeoutMs);
     });
   }
   return new Promise((resolve) => {
@@ -134,12 +134,12 @@ export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 70
 
     const graceTimer = setTimeout(() => {
       if (!startedSpeaking) {
-        finish({ supported: true, startedSpeaking: false, transcript: "", matched: false });
+        finish({ supported: true, startedSpeaking: false, transcript: "", matched: false, ratio: 0 });
       }
     }, graceMs);
 
     const totalTimer = setTimeout(() => {
-      finish({ supported: true, startedSpeaking, transcript: "", matched: false });
+      finish({ supported: true, startedSpeaking, transcript: "", matched: false, ratio: 0 });
     }, timeoutMs);
 
     recognition.onspeechstart = () => { startedSpeaking = true; };
@@ -149,16 +149,16 @@ export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 70
       startedSpeaking = true;
       if (!result.isFinal) return;
       const alternatives = Array.from(result).map(r => r.transcript);
-      const matched = alternatives.some(alt => fuzzyMatch(alt, targetPhrase));
-      finish({ supported: true, startedSpeaking: true, transcript: alternatives[0] || "", matched });
+      const ratio = bestRatio(alternatives, targetPhrase);
+      finish({ supported: true, startedSpeaking: true, transcript: alternatives[0] || "", matched: ratio >= 0.6, ratio });
     };
-    recognition.onerror = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false });
-    recognition.onend = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false });
+    recognition.onerror = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false, ratio: 0 });
+    recognition.onend = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false, ratio: 0 });
 
     try {
       recognition.start();
     } catch {
-      finish({ supported: true, startedSpeaking: false, transcript: "", matched: false });
+      finish({ supported: true, startedSpeaking: false, transcript: "", matched: false, ratio: 0 });
     }
   });
 }
@@ -171,14 +171,25 @@ function normalize(s) {
     .trim();
 }
 
-function fuzzyMatch(said, target) {
+// Retorna de 0 a 1 o quanto "said" bate com "target" — usado tanto pra decidir
+// se acertou (matched) quanto pra classificar a qualidade da pronúncia
+// (bom/médio/ruim), já que o navegador não tem um avaliador de pronúncia real.
+function matchRatio(said, target) {
   const a = normalize(said);
   const b = normalize(target);
-  if (!a) return false;
-  if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
+  if (!a) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.95;
   const wordsA = new Set(a.split(/\s+/));
   const wordsB = b.split(/\s+/);
   const hits = wordsB.filter(w => wordsA.has(w)).length;
-  return hits / wordsB.length >= 0.6;
+  return hits / wordsB.length;
+}
+
+function fuzzyMatch(said, target) {
+  return matchRatio(said, target) >= 0.6;
+}
+
+function bestRatio(alternatives, target) {
+  return Math.max(0, ...alternatives.map(alt => matchRatio(alt, target)));
 }

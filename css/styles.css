@@ -238,6 +238,24 @@ html, body {
 .streak-big { color: var(--accent-light); font-weight: 700; font-size: 1.1rem; }
 .done-recap { color: var(--text-muted); max-width: 40ch; }
 
+.task-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.check-row {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
+.check-row.ok { color: var(--accent-light); }
+.check-row.fail { color: var(--text-muted); }
+
 .review-list {
   flex: 1;
   display: flex;
