@@ -16,10 +16,40 @@ function defaultState() {
   return {
     streak: 0,
     lastCompletedDate: null,
-    completedScenes: [], // ids tipo "familia-1"
+    completedScenes: [], // ids tipo "familia-1" — cenas já dominadas (3 critérios) ao menos uma vez
+    attemptedScenes: [], // ids de cenas que ela já começou pelo menos uma vez (libera "pular treino")
+    masteryLog: [], // [{ sceneId, date }] — um registro por vez que ela fechou uma tarefa
+    pace: null, // 'leve' | 'moderado' | 'intenso' — ritmo escolhido por ela
     characters: {} // { [ambienteId]: { [slotId]: { name, roleLabel } } }
   };
 }
+
+export const LEVELS = [
+  { name: "Começando", min: 0 },
+  { name: "Pegando o jeito", min: 3 },
+  { name: "Ganhando confiança", min: 7 },
+  { name: "Mandando bem", min: 12 },
+  { name: "Fluente no dia a dia", min: 20 }
+];
+
+export function getLevelInfo(masteredCount) {
+  let current = LEVELS[0];
+  let next = LEVELS[1] || null;
+  for (let i = 0; i < LEVELS.length; i++) {
+    if (masteredCount >= LEVELS[i].min) {
+      current = LEVELS[i];
+      next = LEVELS[i + 1] || null;
+    }
+  }
+  const progress = next ? Math.min(1, (masteredCount - current.min) / (next.min - current.min)) : 1;
+  return { current, next, progress, masteredCount };
+}
+
+export const PACE_OPTIONS = [
+  { id: "leve", label: "Tranquilo", desc: "3 tarefas concluídas por semana", weeklyTarget: 3 },
+  { id: "moderado", label: "Moderado", desc: "5 tarefas concluídas por semana", weeklyTarget: 5 },
+  { id: "intenso", label: "Intenso", desc: "7 tarefas concluídas por semana (1 por dia)", weeklyTarget: 7 }
+];
 
 export function loadState() {
   try {
@@ -72,13 +102,34 @@ export function recordDailyPractice(state) {
   saveState(state);
 }
 
+// Marca que ela já começou essa cena pelo menos uma vez — a partir daqui o
+// treino vira opcional (ela pode pular direto pro diálogo nas próximas vezes).
+export function markSceneAttempted(state, sceneId) {
+  if (!state.attemptedScenes.includes(sceneId)) {
+    state.attemptedScenes.push(sceneId);
+  }
+  saveState(state);
+}
+
 // Só marca a cena como "tarefa concluída" (dominada) quando ela termina o
-// diálogo inteiro sem nenhuma ajuda.
+// diálogo inteiro passando nos 3 critérios (sem ajuda, no tempo, boa pronúncia).
 export function markSceneMastered(state, sceneId) {
   if (!state.completedScenes.includes(sceneId)) {
     state.completedScenes.push(sceneId);
   }
+  state.masteryLog.push({ sceneId, date: todayISO() });
   saveState(state);
+}
+
+export function setPace(state, paceId) {
+  state.pace = paceId;
+  saveState(state);
+}
+
+export function getWeeklyMasteryCount(state) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  return state.masteryLog.filter(m => new Date(m.date) >= cutoff).length;
 }
 
 export function getStreak(state) {

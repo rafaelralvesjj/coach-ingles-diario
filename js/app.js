@@ -1,11 +1,16 @@
 import { AMBIENTES, STUDENT_NAME } from "./ambientes.js";
-import { loadState, saveState, getCharacter, setCharacter, removeCharacter, recordDailyPractice, markSceneMastered, getStreak } from "./state.js";
+import {
+  loadState, saveState, getCharacter, setCharacter, removeCharacter,
+  recordDailyPractice, markSceneAttempted, markSceneMastered, getStreak,
+  setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS
+} from "./state.js";
 import { speak, stopSpeaking, listen, listenForResponse, sttAvailable } from "./speech.js";
 
 const state = loadState();
 
 const el = (id) => document.getElementById(id);
 const screens = {
+  pace: el("screen-pace"),
   home: el("screen-home"),
   review: el("screen-review"),
   characters: el("screen-characters"),
@@ -52,10 +57,10 @@ const TASK_TIME_LIMIT_MS = 20 * 60 * 1000; // 20 minutos
 const QUALITY_PASS_PERCENT = 70; // % mínimo de aproveitamento de pronúncia
 
 let inDialoguePhase = false;
-let sceneHadHelp = false;
+let helpCount = 0; // quantas vezes o sistema precisou intervir com ajuda
 let sceneNotVerifiable = false;
 let sceneStartTime = 0;
-let responseQualities = []; // 'bom' | 'medio' | 'ruim', um por frase respondida
+let responseLog = []; // [{ phrase, quality: 'bom'|'medio'|'ruim' }], uma por frase respondida
 
 function classifyQuality(result) {
   if (!result || !result.supported) return "ruim";
@@ -84,7 +89,7 @@ el("btn-pause").addEventListener("click", () => {
 });
 
 el("btn-skip").addEventListener("click", () => {
-  if (inDialoguePhase) sceneHadHelp = true;
+  if (inDialoguePhase) helpCount++;
   if (skipCurrentStep) skipCurrentStep();
 });
 
@@ -153,15 +158,56 @@ function setPhase(index) {
   });
 }
 
+// ---------- ONBOARDING: ESCOLHER RITMO ----------
+
+function renderPaceScreen() {
+  el("pace-greeting").textContent = `${timeGreeting()}, ${STUDENT_NAME}!`;
+  const list = el("pace-list");
+  list.innerHTML = "";
+  for (const pace of PACE_OPTIONS) {
+    const btn = document.createElement("button");
+    btn.className = "review-item" + (state.pace === pace.id ? " selected" : "");
+    btn.innerHTML = `<span class="review-day-title">${pace.label}<br><span style="font-weight:400;color:var(--text-muted);font-size:0.85rem">${pace.desc}</span></span>`;
+    btn.addEventListener("click", () => {
+      setPace(state, pace.id);
+      showScreen("home");
+      renderHome();
+    });
+    list.appendChild(btn);
+  }
+  showScreen("pace");
+}
+
+el("btn-change-pace").addEventListener("click", () => renderPaceScreen());
+
 // ---------- TELA INICIAL ----------
 
 function renderHome() {
+  if (!state.pace) {
+    renderPaceScreen();
+    return;
+  }
+
   const streak = getStreak(state);
   el("streak-badge").textContent = `🔥 ${streak}`;
   el("home-greeting").textContent = `${timeGreeting()}, ${STUDENT_NAME}!`;
   el("stt-hint").textContent = sttAvailable
     ? ""
     : "Seu navegador não reconhece fala automaticamente — a prática vira 'repita comigo', sem correção automática.";
+
+  const level = getLevelInfo(state.completedScenes.length);
+  el("level-name").textContent = level.current.name;
+  el("level-count").textContent = `${level.masteredCount} tarefa${level.masteredCount === 1 ? "" : "s"} concluída${level.masteredCount === 1 ? "" : "s"}`;
+  el("level-bar-fill").style.width = `${Math.round(level.progress * 100)}%`;
+  el("level-next").textContent = level.next
+    ? `Faltam ${level.next.min - level.masteredCount} tarefa${(level.next.min - level.masteredCount) === 1 ? "" : "s"} para o nível "${level.next.name}"`
+    : "Você chegou ao nível máximo! 🎉";
+
+  const pace = PACE_OPTIONS.find(p => p.id === state.pace);
+  const weekCount = getWeeklyMasteryCount(state);
+  if (pace) {
+    el("week-progress").textContent = `Essa semana: ${weekCount}/${pace.weeklyTarget} tarefas (ritmo ${pace.label.toLowerCase()})`;
+  }
 
   const grid = el("ambiente-grid");
   grid.innerHTML = "";
@@ -199,7 +245,7 @@ el("btn-review").addEventListener("click", () => {
       const btn = document.createElement("button");
       btn.className = "review-item";
       btn.innerHTML = `<span class="review-day-num">${ambiente.icon}</span><span class="review-day-title">${ambiente.title} · ${scene.title}</span>`;
-      btn.addEventListener("click", () => startScene(ambiente, scene, true));
+      btn.addEventListener("click", () => startScene(ambiente, scene, true, false));
       list.appendChild(btn);
     }
   }
@@ -215,7 +261,13 @@ function openAmbiente(ambiente) {
   currentScene = ambiente.scenes[0];
   renderCharacters();
   renderScenePicker();
+  updateSkipTrainingButton();
   showScreen("characters");
+}
+
+function updateSkipTrainingButton() {
+  const attemptedBefore = state.attemptedScenes.includes(currentScene.id);
+  el("btn-skip-training").classList.toggle("hidden", !attemptedBefore);
 }
 
 function renderScenePicker() {
@@ -234,6 +286,7 @@ function renderScenePicker() {
     btn.addEventListener("click", () => {
       currentScene = scene;
       renderScenePicker();
+      updateSkipTrainingButton();
     });
     list.appendChild(btn);
   }
@@ -275,7 +328,11 @@ function renderCharacters() {
 el("btn-characters-back").addEventListener("click", () => showScreen("home"));
 
 el("btn-start-scene").addEventListener("click", () => {
-  startScene(currentAmbiente, currentScene, false);
+  startScene(currentAmbiente, currentScene, false, false);
+});
+
+el("btn-skip-training").addEventListener("click", () => {
+  startScene(currentAmbiente, currentScene, false, true);
 });
 
 // ---------- TELA DE CUSTOMIZAÇÃO ----------
@@ -334,16 +391,21 @@ function activeBeatsFor(ambiente, scene) {
   });
 }
 
-async function startScene(ambiente, scene, isReview) {
+async function startScene(ambiente, scene, isReview, skipTraining) {
   paused = false;
   setPauseUI();
-  sceneHadHelp = false;
+  helpCount = 0;
   sceneNotVerifiable = false;
   sceneStartTime = Date.now();
-  responseQualities = [];
+  responseLog = [];
+  markSceneAttempted(state, scene.id);
   showScreen("lesson");
   const beats = activeBeatsFor(ambiente, scene);
-  await runTraining(ambiente, scene, beats);
+  if (skipTraining) {
+    await runStep(() => say("Beleza, vamos direto pro diálogo!", { lang: "pt-BR" }));
+  } else {
+    await runTraining(ambiente, scene, beats);
+  }
   await runDialogue(ambiente, scene, beats);
   await runWrapup(ambiente, scene, isReview);
 }
@@ -399,7 +461,7 @@ async function runDialogue(ambiente, scene, beats) {
     const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 1500, timeoutMs: 7000 }));
     setMic(false);
 
-    responseQualities.push(classifyQuality(result));
+    responseLog.push({ phrase: beat.response_en, quality: classifyQuality(result) });
 
     if (!result || !result.supported) {
       // sem reconhecimento de fala no navegador: modo "repita comigo".
@@ -414,7 +476,7 @@ async function runDialogue(ambiente, scene, beats) {
 
     if (!result.startedSpeaking) {
       // ela hesitou — entra a ajuda
-      sceneHadHelp = true;
+      helpCount++;
       setFeedback("💡 Ajuda");
       setCaption(`${STUDENT_NAME}, você deveria responder:`, beat.response_en);
       await runStep(() => say(`${STUDENT_NAME}, você deveria responder:`, { lang: "pt-BR" }));
@@ -462,41 +524,68 @@ async function runWrapup(ambiente, scene, isReview) {
 
   const elapsedMs = Date.now() - sceneStartTime;
   const elapsedMin = formatMinutes(elapsedMs);
-  const percent = Math.round(qualityPercent(responseQualities));
+  const percent = Math.round(qualityPercent(responseLog.map(r => r.quality)));
 
-  const passedHelp = !sceneHadHelp;
+  const passedHelp = helpCount === 0;
   const passedTime = elapsedMs <= TASK_TIME_LIMIT_MS;
   const passedQuality = percent >= QUALITY_PASS_PERCENT;
   const taskCompleted = passedHelp && passedTime && passedQuality && !sceneNotVerifiable;
+
+  const levelBefore = getLevelInfo(state.completedScenes.length);
 
   if (!isReview) recordDailyPractice(state);
   if (taskCompleted) markSceneMastered(state, scene.id);
   else saveState(state);
 
+  const levelAfter = getLevelInfo(state.completedScenes.length);
+  const leveledUp = taskCompleted && levelAfter.current.name !== levelBefore.current.name;
+
   let recapMsg;
   if (taskCompleted) {
-    recapMsg = `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos, com ${percent}% de qualidade na pronúncia!`;
+    recapMsg = `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos, com ${percent}% de qualidade na pronúncia! Parabéns, você está evoluindo.`;
   } else {
     const reasons = [];
     if (sceneNotVerifiable) reasons.push("seu navegador não consegue verificar sua pronúncia, então essa cena não pode virar tarefa concluída neste aparelho");
-    if (!passedHelp) reasons.push("você precisou de ajuda em algum momento");
+    if (!passedHelp) reasons.push(`você precisou de ajuda ${helpCount} ${helpCount === 1 ? "vez" : "vezes"}`);
     if (!passedTime) reasons.push(`você passou de 20 minutos (levou ${elapsedMin} minutos)`);
     if (!passedQuality) reasons.push(`sua pronúncia ficou em ${percent}%, abaixo dos ${QUALITY_PASS_PERCENT}% necessários`);
     recapMsg = `${scene.recap_pt} Essa tarefa ainda não fechou porque ${reasons.join(", e ")}. Continue praticando!`;
   }
   await runStep(() => say(recapMsg, { lang: "pt-BR" }));
+  if (leveledUp) {
+    await runStep(() => say(`Você subiu de nível! Agora você está em: ${levelAfter.current.name}.`, { lang: "pt-BR" }));
+  }
 
   const streak = getStreak(state);
   el("done-title").textContent = taskCompleted ? "Tarefa concluída! 🏆" : "Cena praticada";
   el("done-streak").textContent = `Sequência: ${streak} dia${streak === 1 ? "" : "s"}`;
   el("done-recap").textContent = recapMsg;
 
+  el("done-training-summary").textContent =
+    `${ambiente.title} · ${scene.title}. Use isso quando: ${ambiente.subtitle.toLowerCase()}.`;
+
   const checklist = el("task-checklist");
   checklist.innerHTML = `
-    <div class="check-row ${passedHelp ? "ok" : "fail"}">${passedHelp ? "✅" : "❌"} Sem ajuda</div>
+    <div class="check-row ${passedHelp ? "ok" : "fail"}">${passedHelp ? "✅" : "❌"} Ajudas usadas: ${helpCount}</div>
     <div class="check-row ${passedTime ? "ok" : "fail"}">${passedTime ? "✅" : "❌"} Dentro de 20 min (${elapsedMin} min)</div>
     <div class="check-row ${passedQuality ? "ok" : "fail"}">${passedQuality ? "✅" : "❌"} Pronúncia: ${percent}%</div>
   `;
+
+  const qualityList = el("quality-list");
+  qualityList.innerHTML = responseLog.map(r => `
+    <div class="quality-item">
+      <span class="quality-phrase">${r.phrase}</span>
+      <span class="quality-tag ${r.quality}">${r.quality === "bom" ? "Bom" : r.quality === "medio" ? "Médio" : "Ruim"}</span>
+    </div>
+  `).join("");
+
+  const taskWord = levelAfter.masteredCount === 1 ? "tarefa concluída" : "tarefas concluídas";
+  const levelUpText = el("level-up-text");
+  if (leveledUp) {
+    levelUpText.textContent = `🎉 Você subiu de nível: ${levelAfter.current.name}! (${levelAfter.masteredCount} ${taskWord} no total)`;
+  } else {
+    levelUpText.textContent = `Nível atual: ${levelAfter.current.name} (${levelAfter.masteredCount} ${taskWord} no total)`;
+  }
 
   showScreen("done");
 }

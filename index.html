@@ -10,19 +10,39 @@
 
 <div id="app" class="app">
 
+  <!-- TELA DE ONBOARDING: escolher ritmo -->
+  <section id="screen-pace" class="screen hidden">
+    <p class="teacher-line" id="pace-greeting">Oi, Denize!</p>
+    <p class="day-sub">Em que ritmo você quer evoluir? Isso define quantas tarefas concluídas por semana são o seu objetivo — dá pra mudar depois quando quiser.</p>
+    <div class="scene-options" id="pace-list"></div>
+  </section>
+
   <!-- TELA INICIAL: escolher ambiente -->
-  <section id="screen-home" class="screen">
+  <section id="screen-home" class="screen hidden">
     <header class="topbar">
       <span class="brand">Coach de Inglês</span>
       <span class="streak" id="streak-badge">🔥 0</span>
     </header>
 
     <p class="teacher-line" id="home-greeting">Oi, Denize!</p>
+
+    <div class="level-card" id="level-card">
+      <div class="level-top">
+        <span class="level-name" id="level-name">Começando</span>
+        <span class="level-count" id="level-count">0 tarefas</span>
+      </div>
+      <div class="level-bar"><div class="level-bar-fill" id="level-bar-fill"></div></div>
+      <p class="level-next" id="level-next"></p>
+    </div>
+
+    <p class="week-progress" id="week-progress"></p>
+
     <p class="day-sub" id="home-sub">Escolha um ambiente para praticar hoje</p>
 
     <div class="ambiente-grid" id="ambiente-grid"></div>
 
     <button id="btn-review" class="btn-secondary">Rever cenas concluídas</button>
+    <button id="btn-change-pace" class="btn-secondary">Mudar ritmo de evolução</button>
     <p class="hint" id="stt-hint"></p>
   </section>
 
@@ -53,6 +73,7 @@
     </div>
 
     <button id="btn-start-scene" class="btn-primary">Começar</button>
+    <button id="btn-skip-training" class="btn-secondary hidden">Já treinei — ir direto pro diálogo</button>
   </section>
 
   <!-- TELA DE CUSTOMIZAÇÃO DE PERSONAGEM -->
@@ -105,8 +126,24 @@
       <p class="done-emoji">🎉</p>
       <h1 id="done-title">Cena concluída!</h1>
       <p class="streak-big" id="done-streak">Sequência: 1 dia</p>
+
+      <div class="done-section">
+        <p class="done-section-title">O que você treinou</p>
+        <p class="done-section-text" id="done-training-summary"></p>
+      </div>
+
       <div class="task-checklist" id="task-checklist"></div>
       <p class="done-recap" id="done-recap"></p>
+
+      <div class="done-section">
+        <p class="done-section-title">Suas respostas nesse diálogo</p>
+        <div class="quality-list" id="quality-list"></div>
+      </div>
+
+      <div class="done-section" id="level-up-section">
+        <p class="done-section-text" id="level-up-text"></p>
+      </div>
+
       <button id="btn-back-home" class="btn-primary">Voltar</button>
     </div>
   </section>
