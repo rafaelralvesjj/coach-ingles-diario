@@ -1,6 +1,6 @@
 import { AMBIENTES, STUDENT_NAME } from "./ambientes.js";
 import {
-  loadState, saveState, getCharacter, setCharacter, removeCharacter,
+  loadState, saveState, getCharacter, setCharacter, removeCharacter, canRemoveCharacter,
   recordDailyPractice, markSceneAttempted, markSceneMastered, getStreak,
   setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS
 } from "./state.js";
@@ -293,7 +293,17 @@ function openAmbiente(ambiente) {
   renderCharacters();
   renderScenePicker();
   updateSkipTrainingButton();
+  updateStartAvailability();
   showScreen("characters");
+}
+
+// Nunca deixa começar uma cena sem nenhum personagem ativo — sem isso o
+// treino e o diálogo ficariam vazios (nenhuma fala pra praticar).
+function updateStartAvailability() {
+  const empty = activeBeatsFor(currentAmbiente, currentScene).length === 0;
+  el("btn-start-scene").disabled = empty;
+  el("btn-skip-training").disabled = empty;
+  el("characters-empty-warning").classList.toggle("hidden", !empty);
 }
 
 function updateSkipTrainingButton() {
@@ -318,6 +328,7 @@ function renderScenePicker() {
       currentScene = scene;
       renderScenePicker();
       updateSkipTrainingButton();
+      updateStartAvailability();
     });
     list.appendChild(btn);
   }
@@ -388,7 +399,10 @@ function openCustomize(slot) {
       el("name-step").classList.remove("hidden");
       const existing = getCharacter(state, currentAmbiente, slot);
       el("character-name-input").value = existing ? existing.name : "";
-      el("btn-remove-character").classList.toggle("hidden", !(slot.optional && state.characters[currentAmbiente.id]?.[slot.id]));
+      const isLastOne = slot.optional && !!existing && !canRemoveCharacter(state, currentAmbiente, slot);
+      const canRemove = slot.optional && !!existing && !isLastOne;
+      el("btn-remove-character").classList.toggle("hidden", !canRemove);
+      el("remove-blocked-hint").classList.toggle("hidden", !isLastOne);
       el("character-name-input").focus();
     });
     roleList.appendChild(btn);
@@ -404,12 +418,14 @@ el("btn-save-character").addEventListener("click", () => {
   if (!name || !selectedRole) return;
   setCharacter(state, currentAmbiente.id, pendingSlot.id, name, selectedRole.label);
   renderCharacters();
+  updateStartAvailability();
   showScreen("characters");
 });
 
 el("btn-remove-character").addEventListener("click", () => {
   removeCharacter(state, currentAmbiente.id, pendingSlot.id);
   renderCharacters();
+  updateStartAvailability();
   showScreen("characters");
 });
 

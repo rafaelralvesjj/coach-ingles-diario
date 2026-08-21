@@ -65,13 +65,16 @@ export function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-// Retorna { name, roleLabel } de quem ocupa esse slot (customizado ou padrão).
-// Retorna null se for um slot opcional que ela ainda não ativou.
+// Retorna { name, roleLabel } de quem ocupa esse slot. Retorna null se for
+// um slot que começa vazio (sem defaultName) e ela ainda não adicionou
+// ninguém, OU se ela removeu explicitamente o personagem padrão desse slot
+// (registrado como `null` em state.characters, diferente de "nunca mexeu").
 export function getCharacter(state, ambiente, slot) {
-  const custom = state.characters[ambiente.id]?.[slot.id];
-  if (custom) return custom;
-  if (slot.optional) return null;
-  return { name: slot.defaultName, roleLabel: slot.label };
+  const entry = state.characters[ambiente.id]?.[slot.id];
+  if (entry === null) return null;
+  if (entry) return entry;
+  if (slot.defaultName) return { name: slot.defaultName, roleLabel: slot.label };
+  return null;
 }
 
 export function setCharacter(state, ambienteId, slotId, name, roleLabel) {
@@ -80,11 +83,19 @@ export function setCharacter(state, ambienteId, slotId, name, roleLabel) {
   saveState(state);
 }
 
+// Marca o slot como removido (null), distinto de "nunca customizado" —
+// assim um slot com personagem padrão (ex.: Rafael) não volta a aparecer
+// sozinho por engano depois que ela decidiu tirá-lo.
 export function removeCharacter(state, ambienteId, slotId) {
-  if (state.characters[ambienteId]) {
-    delete state.characters[ambienteId][slotId];
-  }
+  if (!state.characters[ambienteId]) state.characters[ambienteId] = {};
+  state.characters[ambienteId][slotId] = null;
   saveState(state);
+}
+
+// Nunca deixa ela remover o último personagem ativo de um ambiente — uma
+// cena sem nenhum personagem ficaria sem nenhuma fala pra treinar.
+export function canRemoveCharacter(state, ambiente, slot) {
+  return ambiente.slots.some((s) => s.id !== slot.id && !!getCharacter(state, ambiente, s));
 }
 
 // Conta como prática do dia (mantém a sequência), independente de ter tido

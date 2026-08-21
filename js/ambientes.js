@@ -15,7 +15,7 @@ export const AMBIENTES = [
     subtitle: "Conversas do dia a dia em casa",
     slots: [
       {
-        id: "conjuge", label: "Cônjuge", defaultName: "Rafael", optional: false,
+        id: "conjuge", label: "Cônjuge", defaultName: "Rafael", optional: true,
         roles: [
           { id: "marido", label: "Marido" },
           { id: "esposa", label: "Esposa" },
@@ -23,7 +23,7 @@ export const AMBIENTES = [
         ]
       },
       {
-        id: "filho", label: "Filho/Filha", defaultName: "João", optional: false,
+        id: "filho", label: "Filho/Filha", defaultName: "João", optional: true,
         roles: [
           { id: "filho", label: "Filho" },
           { id: "filha", label: "Filha" },
@@ -139,7 +139,7 @@ export const AMBIENTES = [
     subtitle: "Um bate-papo com as amigas",
     slots: [
       {
-        id: "amiga", label: "Amiga", defaultName: "Michele", optional: false,
+        id: "amiga", label: "Amiga", defaultName: "Michele", optional: true,
         roles: [
           { id: "amiga", label: "Amiga" },
           { id: "vizinha", label: "Vizinha" },
@@ -253,14 +253,14 @@ export const AMBIENTES = [
     subtitle: "No escritório da seguradora, com todo o time",
     slots: [
       {
-        id: "colega", label: "Parceira de trabalho", defaultName: "Luciana", optional: false,
+        id: "colega", label: "Parceira de trabalho", defaultName: "Luciana", optional: true,
         roles: [
           { id: "colega", label: "Colega" },
           { id: "parceira", label: "Parceira de projeto" }
         ]
       },
       {
-        id: "chefe", label: "Chefe", defaultName: "Renata", optional: false,
+        id: "chefe", label: "Chefe", defaultName: "Renata", optional: true,
         roles: [
           { id: "chefe", label: "Chefe" },
           { id: "diretora", label: "Diretora" },
@@ -369,7 +369,7 @@ export const AMBIENTES = [
     subtitle: "Fazendo compras no exterior",
     slots: [
       {
-        id: "atendente", label: "Atendente", defaultName: "Sarah", optional: false,
+        id: "atendente", label: "Atendente", defaultName: "Sarah", optional: true,
         roles: [
           { id: "vendedora", label: "Vendedora" },
           { id: "caixa", label: "Caixa" }
@@ -409,7 +409,7 @@ export const AMBIENTES = [
     subtitle: "Comprando remédio no exterior",
     slots: [
       {
-        id: "farmaceutico", label: "Farmacêutico(a)", defaultName: "Mark", optional: false,
+        id: "farmaceutico", label: "Farmacêutico(a)", defaultName: "Mark", optional: true,
         roles: [
           { id: "farmaceutico", label: "Farmacêutico(a)" }
         ]
@@ -448,7 +448,7 @@ export const AMBIENTES = [
     subtitle: "Pedindo um lanche no exterior",
     slots: [
       {
-        id: "atendente", label: "Atendente", defaultName: "Emma", optional: false,
+        id: "atendente", label: "Atendente", defaultName: "Emma", optional: true,
         roles: [
           { id: "atendente", label: "Atendente" },
           { id: "padeiro", label: "Padeiro(a)" }

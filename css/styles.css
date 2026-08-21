@@ -106,6 +106,12 @@ html, body {
 
 .btn-primary:active { transform: scale(0.98); }
 
+.btn-primary:disabled, .btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .btn-secondary {
   background: transparent;
   color: var(--text);
