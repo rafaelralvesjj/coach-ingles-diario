@@ -109,7 +109,7 @@ export function listen(targetPhrase, { timeoutMs = 6000 } = {}) {
 // graceMs: tempo máximo esperando ela começar a falar antes de considerar que
 // ela travou. timeoutMs: tempo total máximo pra terminar a frase.
 // Retorna { supported, startedSpeaking, transcript, matched }.
-export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 7000 } = {}) {
+export function listenForResponse(targetPhrase, { graceMs = 3000, timeoutMs = 7000 } = {}) {
   if (!sttAvailable) {
     return new Promise((resolve) => {
       setTimeout(() => resolve({ supported: false, startedSpeaking: false, transcript: "", matched: null, ratio: 0 }), timeoutMs);
@@ -161,6 +161,50 @@ export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 70
       finish({ supported: true, startedSpeaking: false, transcript: "", matched: false, ratio: 0 });
     }
   });
+}
+
+// listenRaw: escuta e devolve só o texto transcrito (sem comparar com nada) —
+// usado pro menu de navegação por voz (sim/não, escolher número).
+export function listenRaw({ lang = "pt-BR", timeoutMs = 6000 } = {}) {
+  if (!sttAvailable) {
+    return new Promise((resolve) => {
+      setTimeout(() => resolve({ supported: false, transcript: "" }), 300);
+    });
+  }
+  return new Promise((resolve) => {
+    const recognition = new SpeechRecognitionAPI();
+    recognition.lang = lang;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    let done = false;
+
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { recognition.stop(); } catch {}
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ supported: true, transcript: "" }), timeoutMs);
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0]?.transcript || "";
+      finish({ supported: true, transcript });
+    };
+    recognition.onerror = () => finish({ supported: true, transcript: "" });
+    recognition.onend = () => finish({ supported: true, transcript: "" });
+
+    try {
+      recognition.start();
+    } catch {
+      finish({ supported: true, transcript: "" });
+    }
+  });
+}
+
+export function normalizeText(s) {
+  return normalize(s);
 }
 
 function normalize(s) {

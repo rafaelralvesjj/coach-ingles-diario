@@ -4,7 +4,7 @@ import {
   recordDailyPractice, markSceneAttempted, markSceneMastered, getStreak,
   setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS
 } from "./state.js";
-import { speak, stopSpeaking, listen, listenForResponse, sttAvailable } from "./speech.js";
+import { speak, stopSpeaking, listen, listenForResponse, listenRaw, normalizeText, sttAvailable } from "./speech.js";
 
 const state = loadState();
 
@@ -75,6 +75,33 @@ function qualityPercent(qualities) {
   if (qualities.length === 0) return 100;
   const points = qualities.reduce((sum, q) => sum + (q === "bom" ? 2 : q === "medio" ? 1 : 0), 0);
   return (points / (qualities.length * 2)) * 100;
+}
+
+// --- Menu de navegação por voz, usado depois que uma cena termina, pra ela
+// nunca precisar olhar pra tela: pergunta se quer outro diálogo (sim/não) e,
+// se quiser, deixa escolher o ambiente falando o número.
+const NUMBER_WORDS_PT = ["zero", "um", "dois", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"];
+
+function parseYesNo(transcript) {
+  const t = normalizeText(transcript);
+  if (!t) return null;
+  if (/\b(sim|isso|quero|bora|vamos|claro|pode)\b/.test(t)) return true;
+  if (/\b(nao|no|para|encerra|chega|depois|obrigada)\b/.test(t)) return false;
+  return null;
+}
+
+function parseAmbienteNumber(transcript, max) {
+  const t = normalizeText(transcript);
+  if (!t) return null;
+  const digitMatch = t.match(/\d+/);
+  if (digitMatch) {
+    const n = parseInt(digitMatch[0], 10);
+    if (n >= 1 && n <= max) return n;
+  }
+  for (let i = 1; i <= max; i++) {
+    if (new RegExp(`\\b${NUMBER_WORDS_PT[i]}\\b`).test(t)) return i;
+  }
+  return null;
 }
 
 function setPauseUI() {
@@ -458,7 +485,7 @@ async function runDialogue(ambiente, scene, beats) {
     await runStep(() => say(beat.line_en, { lang: "en-US", voiceKey: character.name }));
 
     setMic(true);
-    const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 1500, timeoutMs: 7000 }));
+    const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 3000, timeoutMs: 7000 }));
     setMic(false);
 
     responseLog.push({ phrase: beat.response_en, quality: classifyQuality(result) });
@@ -586,7 +613,56 @@ async function runWrapup(ambiente, scene, isReview) {
   } else {
     levelUpText.textContent = `Nível atual: ${levelAfter.current.name} (${levelAfter.masteredCount} ${taskWord} no total)`;
   }
+  el("done-goodbye").textContent = "";
 
+  await postCompletionFlow();
+}
+
+// Depois de toda cena (concluída ou não), pergunta por voz se ela quer outro
+// diálogo agora — ela nunca precisa olhar pra tela pra decidir isso. Se sim,
+// ela escolhe o ambiente falando o número. Se não, o app se despede e só
+// então mostra a tela de resumo pra ela ver quando quiser (ex.: já estacionada).
+async function postCompletionFlow() {
+  await runStep(() => say("Quer fazer outro diálogo agora? Diga sim ou não.", { lang: "pt-BR" }));
+  setMic(true);
+  let answer = await runStep(() => listenRaw({ lang: "pt-BR", timeoutMs: 6000 }));
+  setMic(false);
+  let wantsMore = answer.supported ? parseYesNo(answer.transcript) : null;
+
+  if (wantsMore === null && answer.supported) {
+    await runStep(() => say("Não entendi. Diga sim ou não: quer fazer outro diálogo agora?", { lang: "pt-BR" }));
+    setMic(true);
+    answer = await runStep(() => listenRaw({ lang: "pt-BR", timeoutMs: 6000 }));
+    setMic(false);
+    wantsMore = answer.supported ? parseYesNo(answer.transcript) : null;
+  }
+
+  if (wantsMore) {
+    const menu = AMBIENTES.map((a, i) => `${i + 1}, ${a.title}`).join(". ");
+    await runStep(() => say(`Escolha um ambiente. Diga o número: ${menu}.`, { lang: "pt-BR" }));
+    setMic(true);
+    const pick = await runStep(() => listenRaw({ lang: "pt-BR", timeoutMs: 7000 }));
+    setMic(false);
+    const num = pick.supported ? parseAmbienteNumber(pick.transcript, AMBIENTES.length) : null;
+
+    if (num) {
+      const ambiente = AMBIENTES[num - 1];
+      const scene = ambiente.scenes[0];
+      const skipTraining = state.attemptedScenes.includes(scene.id);
+      if (state.attemptedScenes.includes(scene.id) && !state.completedScenes.includes(scene.id)) {
+        await runStep(() => say("Como você não tinha concluído esse diálogo, vamos começar ele do início de novo.", { lang: "pt-BR" }));
+      }
+      await runStep(() => say(`Beleza, vamos para ${ambiente.title}.`, { lang: "pt-BR" }));
+      currentAmbiente = ambiente;
+      currentScene = scene;
+      await startScene(ambiente, scene, false, skipTraining);
+      return;
+    }
+    await runStep(() => say("Não consegui entender a escolha. Vamos deixar pra próxima.", { lang: "pt-BR" }));
+  }
+
+  await runStep(() => say("Tudo bem, te espero para a próxima!", { lang: "pt-BR" }));
+  el("done-goodbye").textContent = "Te espero para a próxima! 👋";
   showScreen("done");
 }
 
