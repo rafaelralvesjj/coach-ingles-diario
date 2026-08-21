@@ -85,6 +85,20 @@ export const AMBIENTES = [
           { slot: "amiga", line_en: "What time is good for you?", line_pt: "Que horário fica bom para você?", response_en: "How about 10am?", response_pt: "Que tal às 10 da manhã?" },
           { slot: "amiga", line_en: "Perfect, see you then!", line_pt: "Perfeito, te vejo lá!", response_en: "See you soon!", response_pt: "Até logo!" }
         ]
+      },
+      {
+        id: "amigas-2",
+        title: "Falando sobre corrida",
+        intro_pt: "Agora um assunto que vocês duas adoram: corrida! Vamos treinar frases pra falar sobre treinos e provas.",
+        recap_pt: "Agora você já sabe falar sobre corrida em inglês — treino, provas, e até planejar correr fora do país.",
+        beats: [
+          { slot: "amiga", line_en: "Do you want to run with me this weekend?", line_pt: "Você quer correr comigo nesse fim de semana?", response_en: "Yes! What time?", response_pt: "Sim! Que horas?" },
+          { slot: "amiga", line_en: "How many kilometers do you run?", line_pt: "Quantos quilômetros você corre?", response_en: "I usually run five kilometers.", response_pt: "Eu geralmente corro cinco quilômetros." },
+          { slot: "amiga", line_en: "I want to run a 10k race next month.", line_pt: "Eu quero correr uma prova de 10 km mês que vem.", response_en: "That sounds great! I want to join too.", response_pt: "Que ótimo! Eu quero participar também." },
+          { slot: "amiga", line_en: "We can train together every week.", line_pt: "A gente pode treinar junto toda semana.", response_en: "Good idea, let's do it.", response_pt: "Boa ideia, vamos fazer isso." },
+          { slot: "amiga", line_en: "Do you want to run a race in another country?", line_pt: "Você quer correr uma prova em outro país?", response_en: "Yes, I would love that!", response_pt: "Sim, eu adoraria isso!" },
+          { slot: "amiga", line_en: "Let's sign up for the race!", line_pt: "Vamos nos inscrever na prova!", response_en: "Yes, let's do it! I'm so excited.", response_pt: "Sim, vamos fazer isso! Estou tão animada." }
+        ]
       }
     ]
   },

@@ -377,6 +377,21 @@ html, body {
   font-weight: 600;
 }
 
+.scene-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.scene-options .review-item {
+  border: 2px solid transparent;
+}
+
+.scene-options .review-item.selected {
+  border-color: var(--accent);
+}
+
 .review-empty {
   flex: 1;
   display: flex;

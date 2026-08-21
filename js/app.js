@@ -34,8 +34,9 @@ function findScene(sceneId) {
   return null;
 }
 
-// --- Navegação: ambiente/slot em foco ao customizar personagem ---
+// --- Navegação: ambiente/cena/slot em foco ---
 let currentAmbiente = null;
+let currentScene = null;
 let pendingSlot = null;
 let selectedRole = null;
 
@@ -180,8 +181,31 @@ el("btn-review-back").addEventListener("click", () => showScreen("home"));
 
 function openAmbiente(ambiente) {
   currentAmbiente = ambiente;
+  currentScene = ambiente.scenes[0];
   renderCharacters();
+  renderScenePicker();
   showScreen("characters");
+}
+
+function renderScenePicker() {
+  const picker = el("scene-picker");
+  const list = el("scene-list");
+  if (currentAmbiente.scenes.length <= 1) {
+    picker.classList.add("hidden");
+    return;
+  }
+  picker.classList.remove("hidden");
+  list.innerHTML = "";
+  for (const scene of currentAmbiente.scenes) {
+    const btn = document.createElement("button");
+    btn.className = "review-item" + (scene.id === currentScene.id ? " selected" : "");
+    btn.innerHTML = `<span class="review-day-title">${scene.title}</span>`;
+    btn.addEventListener("click", () => {
+      currentScene = scene;
+      renderScenePicker();
+    });
+    list.appendChild(btn);
+  }
 }
 
 function renderCharacters() {
@@ -220,8 +244,7 @@ function renderCharacters() {
 el("btn-characters-back").addEventListener("click", () => showScreen("home"));
 
 el("btn-start-scene").addEventListener("click", () => {
-  const scene = currentAmbiente.scenes[0];
-  startScene(currentAmbiente, scene, false);
+  startScene(currentAmbiente, currentScene, false);
 });
 
 // ---------- TELA DE CUSTOMIZAÇÃO ----------
