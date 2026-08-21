@@ -4,7 +4,7 @@ import {
   recordDailyPractice, markSceneAttempted, markSceneMastered, getStreak,
   setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS
 } from "./state.js";
-import { speak, stopSpeaking, listen, listenForResponse, listenRaw, normalizeText, sttAvailable } from "./speech.js";
+import { speak, stopSpeaking, listen, listenForResponse, listenRaw, normalizeText, sttAvailable, hasVoiceFor } from "./speech.js";
 
 const state = loadState();
 
@@ -221,6 +221,9 @@ function renderHome() {
   el("stt-hint").textContent = sttAvailable
     ? ""
     : "Seu navegador não reconhece fala automaticamente — a prática vira 'repita comigo', sem correção automática.";
+  el("tts-hint").textContent = hasVoiceFor("pt")
+    ? ""
+    : "Seu celular não tem uma voz em português instalada, então o áudio em português pode sair impreciso. Nas configurações do Google (app Google > Configurações > Voz > Saída de texto para fala), instale o pacote de voz em Português (Brasil) para melhorar a pronúncia.";
 
   const level = getLevelInfo(state.completedScenes.length);
   el("level-name").textContent = level.current.name;
@@ -442,31 +445,61 @@ function characterFor(ambiente, beat) {
   return getCharacter(state, ambiente, slot);
 }
 
+// trainPhrase: treina UMA frase seguindo exatamente a sequência pedida:
+// 1) fala o significado em português, 2) fala em inglês devagar,
+// 3) fala em inglês normal, 4) pede pra ela repetir (1ª vez),
+// 5) pede pra ela repetir de novo (2ª vez). Não é avaliada (só o diálogo
+// de verdade conta pros 3 critérios) — aqui é só repetição pra fixar.
+async function trainPhrase(en, pt, { captionLabel, voiceKey } = {}) {
+  setCaption("Isso significa:", pt);
+  await runStep(() => say(pt, { lang: "pt-BR" }));
+
+  setCaption(captionLabel || "Fala assim:", en);
+  currentReplay = () => say(en, { lang: "en-US", rate: 0.65, voiceKey });
+  await runStep(() => say(en, { lang: "en-US", rate: 0.65, voiceKey }));
+  await runStep(() => say(en, { lang: "en-US", rate: 0.95, voiceKey }));
+
+  setFeedback("Repita a frase:");
+  await runStep(() => say("Repita.", { lang: "pt-BR" }));
+  setMic(true);
+  await runStep(() => listen(en, { timeoutMs: 6000 }));
+  setMic(false);
+
+  setFeedback("Mais uma vez:");
+  await runStep(() => say("Mais uma vez.", { lang: "pt-BR" }));
+  setMic(true);
+  await runStep(() => listen(en, { timeoutMs: 6000 }));
+  setMic(false);
+  setFeedback("");
+}
+
 async function runTraining(ambiente, scene, beats) {
   inDialoguePhase = false;
   setPhase(0);
   setMic(false);
   setCaption(scene.title, "");
   setFeedback("Treino de frases");
-  currentReplay = () => say(scene.intro_pt, { lang: "pt-BR" });
+
+  const openingLine = `${STUDENT_NAME}, vamos começar um treino antes do seu diálogo. Nesse treino vamos repetir as frases que serão usadas no seu diálogo.`;
+  currentReplay = () => say(openingLine, { lang: "pt-BR" });
+  await runStep(() => say(openingLine, { lang: "pt-BR" }));
   await runStep(() => say(scene.intro_pt, { lang: "pt-BR" }));
 
   for (const beat of beats) {
     const character = characterFor(ambiente, beat);
+    await trainPhrase(beat.line_en, beat.line_pt, { captionLabel: `${character.name} vai dizer:`, voiceKey: character.name });
+    await trainPhrase(beat.response_en, beat.response_pt, { captionLabel: "Sua resposta será:" });
+  }
 
-    setCaption(`${character.name} vai dizer:`, beat.line_en);
-    currentReplay = () => say(beat.line_en, { lang: "en-US", rate: 0.65, voiceKey: character.name });
-    await runStep(() => say(beat.line_en, { lang: "en-US", rate: 0.65, voiceKey: character.name }));
-    await runStep(() => say(beat.line_en, { lang: "en-US", rate: 0.95, voiceKey: character.name }));
-    setCaption("Isso significa:", beat.line_pt);
-    await runStep(() => say(beat.line_pt, { lang: "pt-BR" }));
-
-    setCaption("Sua resposta será:", beat.response_en);
-    currentReplay = () => say(beat.response_en, { lang: "en-US", rate: 0.65 });
-    await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.65 }));
-    await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.95 }));
-    setCaption("Isso significa:", beat.response_pt);
-    await runStep(() => say(beat.response_pt, { lang: "pt-BR" }));
+  // Depois do treino, lê o diálogo inteiro em português, pra ela saber
+  // exatamente sobre o que a conversa vai ser antes de começar de verdade.
+  setFeedback("");
+  setCaption("Resumo do diálogo", "");
+  await runStep(() => say("Treino concluído! Agora vou ler o diálogo inteiro em português, para você saber exatamente sobre o que vocês vão conversar.", { lang: "pt-BR" }));
+  for (const beat of beats) {
+    const character = characterFor(ambiente, beat);
+    await runStep(() => say(`${character.name} diz: ${beat.line_pt}`, { lang: "pt-BR" }));
+    await runStep(() => say(`Você responde: ${beat.response_pt}`, { lang: "pt-BR" }));
   }
 }
 

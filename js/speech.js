@@ -17,14 +17,29 @@ if (synth) {
   synth.onvoiceschanged = loadVoices;
 }
 
-function pickVoice(lang, preferFemale) {
-  const candidates = voicesCache.filter(v => v.lang && v.lang.toLowerCase().startsWith(lang));
-  if (candidates.length === 0) return null;
+// Prioriza um match exato de região (ex.: "pt-BR") antes de aceitar
+// qualquer voz só com o mesmo idioma (ex.: "pt-PT") — evita pegar uma voz
+// com sotaque/fonética diferente quando existe uma voz certa disponível.
+function pickVoice(fullLang, preferFemale) {
+  const wanted = fullLang.toLowerCase();
+  const base = wanted.split("-")[0];
+  const exact = voicesCache.filter(v => v.lang && v.lang.toLowerCase() === wanted);
+  const sameLang = voicesCache.filter(v => v.lang && v.lang.toLowerCase().startsWith(base));
+  const pool = exact.length > 0 ? exact : sameLang;
+  if (pool.length === 0) return null;
   if (preferFemale) {
-    const female = candidates.find(v => /female|woman|samantha|joanna|salli|zira/i.test(v.name));
+    const female = pool.find(v => /female|woman|samantha|joanna|salli|zira|luciana|maria|francisca/i.test(v.name));
     if (female) return female;
   }
-  return candidates[0];
+  return pool[0];
+}
+
+// hasVoiceFor: existe alguma voz instalada nesse aparelho para esse idioma?
+// Usado pra avisar quando o português vai sair mal (ex.: aparelho sem voz
+// pt-BR instalada, caindo para uma voz genérica/de outro idioma).
+export function hasVoiceFor(lang) {
+  const base = lang.toLowerCase().split("-")[0];
+  return voicesCache.some(v => v.lang && v.lang.toLowerCase().startsWith(base));
 }
 
 // Deriva um pitch estável (0.8–1.3) a partir de um texto qualquer (ex.: nome do
@@ -44,16 +59,30 @@ function pitchFromKey(key) {
 export function speak(text, { lang = "en-US", role = "teacher", rate, voiceKey } = {}) {
   return new Promise((resolve) => {
     if (!synth) { resolve(); return; }
-    synth.cancel(); // evita fila acumulada se ela tocar/pausar rápido
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = lang;
-    const voice = pickVoice(lang.split("-")[0], role !== "colleague");
-    if (voice) utter.voice = voice;
-    utter.rate = rate != null ? rate : (lang.startsWith("pt") ? 1.0 : 0.95);
-    utter.pitch = voiceKey ? pitchFromKey(voiceKey) : (role === "colleague" ? 0.85 : 1.05);
-    utter.onend = resolve;
-    utter.onerror = resolve;
-    synth.speak(utter);
+    try {
+      synth.cancel(); // evita fila acumulada se ela tocar/pausar rápido
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = lang;
+      try {
+        const voice = pickVoice(lang, role !== "colleague");
+        if (voice) utter.voice = voice;
+      } catch {
+        // navegador recusou a voz escolhida (ex.: voz inválida/obsoleta) —
+        // segue sem voice explícita, o navegador usa a voz padrão do idioma.
+      }
+      // Português um pouco mais devagar que o padrão do sistema deixa a
+      // pronúncia mais nítida (evita soar "engolido" ou parecido com espanhol
+      // quando o aparelho não tem uma voz pt-BR de boa qualidade instalada).
+      utter.rate = rate != null ? rate : (lang.startsWith("pt") ? 0.9 : 0.95);
+      utter.pitch = voiceKey ? pitchFromKey(voiceKey) : (role === "colleague" ? 0.85 : 1.05);
+      utter.onend = resolve;
+      utter.onerror = resolve;
+      synth.speak(utter);
+    } catch {
+      // qualquer erro inesperado na síntese de voz nunca pode travar o app
+      // (ela está dirigindo — o fluxo tem que sempre seguir em frente).
+      resolve();
+    }
   });
 }
 
