@@ -1,5 +1,5 @@
-import { CURRICULUM, TEACHER_NAME, STUDENT_NAME } from "./curriculum.js";
-import { loadState, saveState, recordItemResult, getDueReviewItems, markDayComplete, getStreak } from "./srs.js";
+import { AMBIENTES, STUDENT_NAME } from "./ambientes.js";
+import { loadState, saveState, getCharacter, setCharacter, removeCharacter, markSceneComplete, getStreak } from "./state.js";
 import { speak, stopSpeaking, listen, sttAvailable } from "./speech.js";
 
 const state = loadState();
@@ -7,10 +7,17 @@ const state = loadState();
 const el = (id) => document.getElementById(id);
 const screens = {
   home: el("screen-home"),
+  review: el("screen-review"),
+  characters: el("screen-characters"),
+  customize: el("screen-customize"),
   lesson: el("screen-lesson"),
-  done: el("screen-done"),
-  review: el("screen-review")
+  done: el("screen-done")
 };
+
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.add("hidden"));
+  screens[name].classList.remove("hidden");
+}
 
 function timeGreeting() {
   const hour = new Date().getHours();
@@ -19,12 +26,20 @@ function timeGreeting() {
   return "Boa noite";
 }
 
-function showScreen(name) {
-  Object.values(screens).forEach(s => s.classList.add("hidden"));
-  screens[name].classList.remove("hidden");
+function findScene(sceneId) {
+  for (const ambiente of AMBIENTES) {
+    const scene = ambiente.scenes.find(s => s.id === sceneId);
+    if (scene) return { ambiente, scene };
+  }
+  return null;
 }
 
-// --- Controle de pausa / pular, usado durante a aula ---
+// --- Navegação: ambiente/slot em foco ao customizar personagem ---
+let currentAmbiente = null;
+let pendingSlot = null;
+let selectedRole = null;
+
+// --- Controle de pausa / pular, usado durante treino e diálogo ---
 let paused = false;
 let skipCurrentStep = null;
 let currentReplay = null;
@@ -60,7 +75,6 @@ async function waitWhilePaused() {
   }
 }
 
-// Executa uma etapa (função async) permitindo que "Pular" a interrompa.
 function runStep(taskFn) {
   return new Promise((resolve) => {
     let finished = false;
@@ -70,10 +84,10 @@ function runStep(taskFn) {
       stopSpeaking();
       resolve();
     };
-    taskFn().then(() => {
+    taskFn().then((v) => {
       if (finished) return;
       finished = true;
-      resolve();
+      resolve(v);
     });
   });
 }
@@ -97,7 +111,7 @@ function setMic(on) {
   el("mic-indicator").classList.toggle("hidden", !on);
 }
 
-const PHASES = ["Aquecimento", "Aula de hoje", "Prática", "Resumo"];
+const PHASES = ["Treino", "Diálogo", "Resumo"];
 function setPhase(index) {
   el("phase-label").textContent = PHASES[index];
   const dots = el("progress-dots");
@@ -110,182 +124,253 @@ function setPhase(index) {
   });
 }
 
-function nextDay() {
-  return CURRICULUM.find(d => d.id === state.currentDay) || null;
-}
+// ---------- TELA INICIAL ----------
 
 function renderHome() {
   const streak = getStreak(state);
   el("streak-badge").textContent = `🔥 ${streak}`;
+  el("home-greeting").textContent = `${timeGreeting()}, ${STUDENT_NAME}!`;
   el("stt-hint").textContent = sttAvailable
     ? ""
     : "Seu navegador não reconhece fala automaticamente — a prática vira 'repita comigo', sem correção automática.";
 
-  const day = nextDay();
-  if (!day) {
-    el("home-greeting").textContent = `Uau, ${STUDENT_NAME}! Você terminou todos os dias disponíveis, ${TEACHER_NAME} está impressionada.`;
-    el("home-day-title").textContent = "Volte em breve por mais dias 🎉";
-    el("home-day-sub").textContent = "Enquanto isso, use 'Rever dias concluídos' para praticar de novo.";
-    el("btn-start").classList.add("hidden");
-    return;
+  const grid = el("ambiente-grid");
+  grid.innerHTML = "";
+  for (const ambiente of AMBIENTES) {
+    const card = document.createElement("button");
+    card.className = "ambiente-card";
+    card.innerHTML = `
+      <span class="ambiente-icon">${ambiente.icon}</span>
+      <span class="ambiente-title">${ambiente.title}</span>
+      <span class="ambiente-subtitle">${ambiente.subtitle}</span>
+    `;
+    card.addEventListener("click", () => openAmbiente(ambiente));
+    grid.appendChild(card);
   }
-  el("btn-start").classList.remove("hidden");
-  el("home-greeting").textContent = day.id === 1
-    ? `Oi, ${STUDENT_NAME}! Eu sou a ${TEACHER_NAME}. Pronta para sua primeira aula?`
-    : `${timeGreeting()}, ${STUDENT_NAME}!`;
-  el("home-day-title").textContent = `Dia ${day.id} · ${day.title}`;
-  el("home-day-sub").textContent = "~20 minutos · fone no ouvido, sem precisar olhar pra tela";
 }
 
-el("btn-start").addEventListener("click", () => {
-  const day = nextDay();
-  if (day) startLesson(day, false);
-});
-
 el("btn-review").addEventListener("click", () => {
-  const completed = CURRICULUM.filter(d => state.completedDays.includes(d.id));
   const list = el("review-list");
   list.innerHTML = "";
-  if (completed.length === 0) {
+
+  const completedInfo = state.completedScenes
+    .map(findScene)
+    .filter(Boolean);
+
+  if (completedInfo.length === 0) {
     const empty = document.createElement("p");
     empty.className = "review-empty";
-    empty.textContent = "Você ainda não concluiu nenhum dia.";
+    empty.textContent = "Você ainda não concluiu nenhuma cena.";
     list.appendChild(empty);
   } else {
-    for (const day of completed) {
+    for (const { ambiente, scene } of completedInfo) {
       const btn = document.createElement("button");
       btn.className = "review-item";
-      btn.innerHTML = `<span class="review-day-num">${day.id}</span><span class="review-day-title">${day.title}</span>`;
-      btn.addEventListener("click", () => startLesson(day, true));
+      btn.innerHTML = `<span class="review-day-num">${ambiente.icon}</span><span class="review-day-title">${ambiente.title} · ${scene.title}</span>`;
+      btn.addEventListener("click", () => startScene(ambiente, scene, true));
       list.appendChild(btn);
     }
   }
   showScreen("review");
 });
 
-el("btn-review-back").addEventListener("click", () => {
-  showScreen("home");
+el("btn-review-back").addEventListener("click", () => showScreen("home"));
+
+// ---------- TELA DE PERSONAGENS ----------
+
+function openAmbiente(ambiente) {
+  currentAmbiente = ambiente;
+  renderCharacters();
+  showScreen("characters");
+}
+
+function renderCharacters() {
+  el("characters-title").textContent = currentAmbiente.title;
+  const list = el("character-list");
+  list.innerHTML = "";
+
+  for (const slot of currentAmbiente.slots) {
+    const character = getCharacter(state, currentAmbiente, slot);
+    const row = document.createElement("div");
+    row.className = "character-row";
+
+    if (character) {
+      row.innerHTML = `
+        <div class="character-info">
+          <span class="character-name">${character.name}</span>
+          <span class="character-role">${character.roleLabel}</span>
+        </div>
+        <button class="btn-chip">Trocar</button>
+      `;
+      row.querySelector(".btn-chip").addEventListener("click", () => openCustomize(slot));
+    } else {
+      row.innerHTML = `
+        <div class="character-info">
+          <span class="character-name character-empty">${slot.label}</span>
+          <span class="character-role">Ninguém adicionado ainda</span>
+        </div>
+        <button class="btn-chip btn-chip-accent">+ Adicionar</button>
+      `;
+      row.querySelector(".btn-chip").addEventListener("click", () => openCustomize(slot));
+    }
+    list.appendChild(row);
+  }
+}
+
+el("btn-characters-back").addEventListener("click", () => showScreen("home"));
+
+el("btn-start-scene").addEventListener("click", () => {
+  const scene = currentAmbiente.scenes[0];
+  startScene(currentAmbiente, scene, false);
 });
 
-async function startLesson(day, isReview) {
+// ---------- TELA DE CUSTOMIZAÇÃO ----------
+
+function openCustomize(slot) {
+  pendingSlot = slot;
+  selectedRole = null;
+  el("role-step").classList.remove("hidden");
+  el("name-step").classList.add("hidden");
+  el("character-name-input").value = "";
+
+  const roleList = el("role-list");
+  roleList.innerHTML = "";
+  for (const role of slot.roles) {
+    const btn = document.createElement("button");
+    btn.className = "review-item";
+    btn.innerHTML = `<span class="review-day-title">${role.label}</span>`;
+    btn.addEventListener("click", () => {
+      selectedRole = role;
+      el("name-step-label").textContent = `Papel: ${role.label} — qual é o nome?`;
+      el("role-step").classList.add("hidden");
+      el("name-step").classList.remove("hidden");
+      const existing = getCharacter(state, currentAmbiente, slot);
+      el("character-name-input").value = existing ? existing.name : "";
+      el("btn-remove-character").classList.toggle("hidden", !(slot.optional && state.characters[currentAmbiente.id]?.[slot.id]));
+      el("character-name-input").focus();
+    });
+    roleList.appendChild(btn);
+  }
+
+  showScreen("customize");
+}
+
+el("btn-customize-back").addEventListener("click", () => showScreen("characters"));
+
+el("btn-save-character").addEventListener("click", () => {
+  const name = el("character-name-input").value.trim();
+  if (!name || !selectedRole) return;
+  setCharacter(state, currentAmbiente.id, pendingSlot.id, name, selectedRole.label);
+  renderCharacters();
+  showScreen("characters");
+});
+
+el("btn-remove-character").addEventListener("click", () => {
+  removeCharacter(state, currentAmbiente.id, pendingSlot.id);
+  renderCharacters();
+  showScreen("characters");
+});
+
+// ---------- TREINO + DIÁLOGO ----------
+
+function activeBeatsFor(ambiente, scene) {
+  return scene.beats.filter((beat) => {
+    const slot = ambiente.slots.find(s => s.id === beat.slot);
+    return !!getCharacter(state, ambiente, slot);
+  });
+}
+
+async function startScene(ambiente, scene, isReview) {
   paused = false;
   setPauseUI();
   showScreen("lesson");
-  await runWarmup();
-  await runNewLesson(day);
-  await runPractice(day);
-  await runWrapup(day, isReview);
+  const beats = activeBeatsFor(ambiente, scene);
+  await runTraining(ambiente, scene, beats);
+  await runDialogue(ambiente, scene, beats);
+  await runWrapup(ambiente, scene, isReview);
 }
 
-async function runWarmup() {
+function characterFor(ambiente, beat) {
+  const slot = ambiente.slots.find(s => s.id === beat.slot);
+  return getCharacter(state, ambiente, slot);
+}
+
+async function runTraining(ambiente, scene, beats) {
   setPhase(0);
   setMic(false);
-  const dueItems = getDueReviewItems(state, CURRICULUM, 4);
-  if (dueItems.length === 0) {
-    setCaption("Aquecimento", "Sem revisão hoje — direto para a aula nova!");
-    await runStep(() => say("No review today. Let's dive into today's lesson!", { lang: "en-US" }));
-    return;
-  }
-  await runStep(() => say("Vamos relembrar rapidinho antes de começar.", { lang: "pt-BR" }));
-  for (const item of dueItems) {
-    setCaption(item.prompt_pt, "");
-    setFeedback("");
-    currentReplay = () => say(item.prompt_pt, { lang: "pt-BR" });
-    await runStep(() => say(item.prompt_pt, { lang: "pt-BR" }));
+  setCaption(scene.title, "");
+  setFeedback("Treino de frases");
+  currentReplay = () => say(scene.intro_pt, { lang: "pt-BR" });
+  await runStep(() => say(scene.intro_pt, { lang: "pt-BR" }));
 
-    setMic(true);
-    const result = await runStep(() => listen(item.target_en, { timeoutMs: 6000 }));
-    setMic(false);
+  for (const beat of beats) {
+    const character = characterFor(ambiente, beat);
 
-    if (result && result.supported && result.matched) {
-      setFeedback("✅ Muito bem!");
-      recordItemResult(state, item.id, true);
-      await runStep(() => say("Great job!", { lang: "en-US" }));
-    } else if (result && result.supported) {
-      setFeedback(`A resposta era: "${item.target_en}"`);
-      recordItemResult(state, item.id, false);
-      await runStep(() => say(item.target_en, { lang: "en-US" }));
-    } else {
-      setCaption(item.prompt_pt, item.target_en);
-      setFeedback("Repita em voz alta.");
-      await runStep(() => say(item.target_en, { lang: "en-US" }));
-    }
+    setCaption(`${character.name} vai dizer:`, beat.line_en);
+    currentReplay = () => say(beat.line_en, { lang: "en-US", rate: 0.65, voiceKey: character.name });
+    await runStep(() => say(beat.line_en, { lang: "en-US", rate: 0.65, voiceKey: character.name }));
+    await runStep(() => say(beat.line_en, { lang: "en-US", rate: 0.95, voiceKey: character.name }));
+    setCaption("Isso significa:", beat.line_pt);
+    await runStep(() => say(beat.line_pt, { lang: "pt-BR" }));
+
+    setCaption("Sua resposta será:", beat.response_en);
+    currentReplay = () => say(beat.response_en, { lang: "en-US", rate: 0.65 });
+    await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.65 }));
+    await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.95 }));
+    setCaption("Isso significa:", beat.response_pt);
+    await runStep(() => say(beat.response_pt, { lang: "pt-BR" }));
   }
 }
 
-async function runNewLesson(day) {
+async function runDialogue(ambiente, scene, beats) {
   setPhase(1);
-  setMic(false);
-  setCaption(day.title, "");
   setFeedback("");
-  currentReplay = () => say(day.intro_pt, { lang: "pt-BR" });
-  await runStep(() => say(day.intro_pt, { lang: "pt-BR" }));
+  await runStep(() => say("Agora vamos para o diálogo de verdade. Preste atenção e responda quando for sua vez.", { lang: "pt-BR" }));
 
-  for (const v of day.vocab) {
-    setCaption(v.pt, v.en);
-    setFeedback(v.note_pt || "");
-    currentReplay = () => say(v.en, { lang: "en-US" });
-    await runStep(() => say(v.en, { lang: "en-US" }));
-    await runStep(() => say(v.pt, { lang: "pt-BR" }));
-  }
+  for (const beat of beats) {
+    const character = characterFor(ambiente, beat);
 
-  setFeedback("Diálogo:");
-  for (const line of day.dialogue) {
-    setCaption(line.pt, line.en);
-    currentReplay = () => say(line.en, { lang: "en-US", role: line.speaker });
-    await runStep(() => say(line.en, { lang: "en-US", role: line.speaker }));
-  }
-}
-
-async function runPractice(day) {
-  setPhase(2);
-  setFeedback("");
-  await runStep(() => say("Agora é sua vez de praticar.", { lang: "pt-BR" }));
-
-  for (const p of day.practice) {
-    setCaption(p.prompt_pt, "");
+    setCaption(character.name, beat.line_en);
     setFeedback("");
-    currentReplay = () => say(p.prompt_pt, { lang: "pt-BR" });
-    await runStep(() => say(p.prompt_pt, { lang: "pt-BR" }));
+    currentReplay = () => say(beat.line_en, { lang: "en-US", voiceKey: character.name });
+    await runStep(() => say(beat.line_en, { lang: "en-US", voiceKey: character.name }));
 
     setMic(true);
-    const result = await runStep(() => listen(p.target_en, { timeoutMs: 6000 }));
+    const result = await runStep(() => listen(beat.response_en, { timeoutMs: 6000 }));
     setMic(false);
 
     if (result && result.supported && result.matched) {
       setFeedback("✅ Perfeito!");
-      recordItemResult(state, p.id, true);
       await runStep(() => say("Perfect!", { lang: "en-US" }));
     } else if (result && result.supported) {
-      setCaption(p.prompt_pt, p.target_en);
-      setFeedback(`Quase lá! A frase é: "${p.target_en}"`);
-      recordItemResult(state, p.id, false);
-      await runStep(() => say(p.target_en, { lang: "en-US" }));
+      setCaption(character.name, beat.response_en);
+      setFeedback(`Quase lá! A frase é: "${beat.response_en}"`);
+      await runStep(() => say(beat.response_en, { lang: "en-US" }));
     } else {
-      setCaption(p.prompt_pt, p.target_en);
+      setCaption(character.name, beat.response_en);
       setFeedback("Repita em voz alta.");
-      await runStep(() => say(p.target_en, { lang: "en-US" }));
+      await runStep(() => say(beat.response_en, { lang: "en-US" }));
     }
   }
 }
 
-async function runWrapup(day, isReview) {
-  setPhase(3);
+async function runWrapup(ambiente, scene, isReview) {
+  setPhase(2);
   setMic(false);
   setCaption("", "");
   setFeedback("");
-  await runStep(() => say(day.recap_pt, { lang: "pt-BR" }));
+  await runStep(() => say(scene.recap_pt, { lang: "pt-BR" }));
 
   if (!isReview) {
-    markDayComplete(state, day.id);
+    markSceneComplete(state, scene.id);
   } else {
     saveState(state);
   }
 
   const streak = getStreak(state);
-  el("done-title").textContent = isReview ? "Revisão concluída!" : "Aula concluída!";
+  el("done-title").textContent = isReview ? "Revisão concluída!" : "Cena concluída!";
   el("done-streak").textContent = `Sequência: ${streak} dia${streak === 1 ? "" : "s"}`;
-  el("done-recap").textContent = day.recap_pt;
+  el("done-recap").textContent = scene.recap_pt;
   showScreen("done");
 }
 

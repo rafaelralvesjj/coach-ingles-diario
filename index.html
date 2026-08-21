@@ -10,23 +10,19 @@
 
 <div id="app" class="app">
 
-  <!-- TELA INICIAL -->
+  <!-- TELA INICIAL: escolher ambiente -->
   <section id="screen-home" class="screen">
     <header class="topbar">
       <span class="brand">Coach de Inglês</span>
       <span class="streak" id="streak-badge">🔥 0</span>
     </header>
 
-    <div class="home-content">
-      <p class="teacher-line" id="home-greeting">Oi! Pronta para a aula de hoje?</p>
-      <h1 class="day-title" id="home-day-title">Dia 1 · Abrindo uma reunião com confiança</h1>
-      <p class="day-sub" id="home-day-sub">~20 minutos · fone no ouvido, sem precisar olhar pra tela</p>
+    <p class="teacher-line" id="home-greeting">Oi, Denize!</p>
+    <p class="day-sub" id="home-sub">Escolha um ambiente para praticar hoje</p>
 
-      <button id="btn-start" class="btn-primary">Começar aula de hoje</button>
+    <div class="ambiente-grid" id="ambiente-grid"></div>
 
-      <button id="btn-review" class="btn-secondary">Rever dias concluídos</button>
-    </div>
-
+    <button id="btn-review" class="btn-secondary">Rever cenas concluídas</button>
     <p class="hint" id="stt-hint"></p>
   </section>
 
@@ -34,18 +30,52 @@
   <section id="screen-review" class="screen hidden">
     <header class="topbar">
       <button id="btn-review-back" class="btn-icon" aria-label="Voltar">←</button>
-      <span class="phase-label">Rever dias</span>
+      <span class="phase-label">Rever cenas</span>
       <span style="width:44px"></span>
     </header>
-
     <div class="review-list" id="review-list"></div>
   </section>
 
-  <!-- TELA DA AULA -->
+  <!-- TELA DE PERSONAGENS -->
+  <section id="screen-characters" class="screen hidden">
+    <header class="topbar">
+      <button id="btn-characters-back" class="btn-icon" aria-label="Voltar">←</button>
+      <span class="phase-label" id="characters-title">Personagens</span>
+      <span style="width:44px"></span>
+    </header>
+
+    <p class="day-sub" id="characters-sub">Quem vai participar dessa cena?</p>
+    <div class="character-list" id="character-list"></div>
+
+    <button id="btn-start-scene" class="btn-primary">Começar</button>
+  </section>
+
+  <!-- TELA DE CUSTOMIZAÇÃO DE PERSONAGEM -->
+  <section id="screen-customize" class="screen hidden">
+    <header class="topbar">
+      <button id="btn-customize-back" class="btn-icon" aria-label="Voltar">←</button>
+      <span class="phase-label">Personagem</span>
+      <span style="width:44px"></span>
+    </header>
+
+    <div id="role-step">
+      <p class="day-sub">Escolha o papel</p>
+      <div class="role-list" id="role-list"></div>
+    </div>
+
+    <div id="name-step" class="hidden">
+      <p class="day-sub" id="name-step-label">Qual o nome?</p>
+      <input type="text" id="character-name-input" class="text-input" placeholder="Nome" maxlength="24">
+      <button id="btn-save-character" class="btn-primary">Salvar</button>
+      <button id="btn-remove-character" class="btn-secondary hidden">Remover personagem</button>
+    </div>
+  </section>
+
+  <!-- TELA DE TREINO / DIÁLOGO -->
   <section id="screen-lesson" class="screen hidden">
     <header class="topbar">
       <button id="btn-exit" class="btn-icon" aria-label="Sair">✕</button>
-      <span class="phase-label" id="phase-label">Aquecimento</span>
+      <span class="phase-label" id="phase-label">Treino</span>
       <button id="btn-pause" class="btn-icon" aria-label="Pausar">⏸</button>
     </header>
 
@@ -68,7 +98,7 @@
   <section id="screen-done" class="screen hidden">
     <div class="done-content">
       <p class="done-emoji">🎉</p>
-      <h1 id="done-title">Aula concluída!</h1>
+      <h1 id="done-title">Cena concluída!</h1>
       <p class="streak-big" id="done-streak">Sequência: 1 dia</p>
       <p class="done-recap" id="done-recap"></p>
       <button id="btn-back-home" class="btn-primary">Voltar</button>

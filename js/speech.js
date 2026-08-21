@@ -27,8 +27,21 @@ function pickVoice(lang, preferFemale) {
   return candidates[0];
 }
 
-// speak: fala um texto e resolve quando terminar. role define timbre (teacher/colleague/pt).
-export function speak(text, { lang = "en-US", role = "teacher" } = {}) {
+// Deriva um pitch estável (0.8–1.3) a partir de um texto qualquer (ex.: nome do
+// personagem), para cada personagem soar um pouco diferente sem precisar de
+// vozes extras.
+function pitchFromKey(key) {
+  if (!key) return 1.0;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return 0.8 + (hash % 50) / 100; // 0.80 .. 1.29
+}
+
+// speak: fala um texto e resolve quando terminar.
+// opts.rate: velocidade explícita (0.6 = devagar, 1.0 = normal). Se omitido,
+// usa um padrão razoável por idioma.
+// opts.voiceKey: string (ex. nome do personagem) usada para variar o timbre.
+export function speak(text, { lang = "en-US", role = "teacher", rate, voiceKey } = {}) {
   return new Promise((resolve) => {
     if (!synth) { resolve(); return; }
     synth.cancel(); // evita fila acumulada se ela tocar/pausar rápido
@@ -36,8 +49,8 @@ export function speak(text, { lang = "en-US", role = "teacher" } = {}) {
     utter.lang = lang;
     const voice = pickVoice(lang.split("-")[0], role !== "colleague");
     if (voice) utter.voice = voice;
-    utter.rate = lang.startsWith("pt") ? 1.0 : 0.95;
-    utter.pitch = role === "colleague" ? 0.85 : 1.05;
+    utter.rate = rate != null ? rate : (lang.startsWith("pt") ? 1.0 : 0.95);
+    utter.pitch = voiceKey ? pitchFromKey(voiceKey) : (role === "colleague" ? 0.85 : 1.05);
     utter.onend = resolve;
     utter.onerror = resolve;
     synth.speak(utter);

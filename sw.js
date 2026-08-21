@@ -1,12 +1,12 @@
-const CACHE_NAME = "coach-ingles-v1";
+const CACHE_NAME = "coach-ingles-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./css/styles.css",
   "./js/app.js",
-  "./js/curriculum.js",
-  "./js/srs.js",
+  "./js/ambientes.js",
+  "./js/state.js",
   "./js/speech.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

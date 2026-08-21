@@ -277,6 +277,102 @@ html, body {
   flex-shrink: 0;
 }
 
+/* --- Grade de ambientes (tela inicial) --- */
+
+#home-greeting, #home-sub { text-align: center; }
+
+.ambiente-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px 0 20px;
+}
+
+.ambiente-card {
+  background: var(--bg-elevated);
+  border: 1px solid rgba(199, 183, 251, 0.15);
+  border-radius: 18px;
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ambiente-card:active { transform: scale(0.97); }
+
+.ambiente-icon { font-size: 2rem; }
+.ambiente-title { font-weight: 700; font-size: 1rem; }
+.ambiente-subtitle { font-size: 0.78rem; color: var(--text-muted); }
+
+/* --- Lista de personagens --- */
+
+.character-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 16px;
+}
+
+.character-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(199, 183, 251, 0.15);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.character-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.character-name { font-weight: 700; }
+.character-empty { color: var(--text-muted); font-weight: 600; }
+.character-role { font-size: 0.8rem; color: var(--text-muted); }
+
+.btn-chip {
+  background: var(--bg);
+  border: 1px solid var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-chip-accent {
+  background: var(--gradient);
+  border: none;
+  color: #fff;
+}
+
+.text-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 2px solid rgba(199, 183, 251, 0.25);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-size: 1rem;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .review-item .review-day-title {
   font-weight: 600;
 }
