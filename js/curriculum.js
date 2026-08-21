@@ -3,6 +3,7 @@
 // Cada item de vocab/practice carrega um id estável, usado pela repetição espaçada (srs.js).
 
 export const TEACHER_NAME = "Sophie";
+export const STUDENT_NAME = "Denize";
 
 export const CURRICULUM = [
   {

@@ -1,4 +1,4 @@
-import { CURRICULUM, TEACHER_NAME } from "./curriculum.js";
+import { CURRICULUM, TEACHER_NAME, STUDENT_NAME } from "./curriculum.js";
 import { loadState, saveState, recordItemResult, getDueReviewItems, markDayComplete, getStreak } from "./srs.js";
 import { speak, stopSpeaking, listen, sttAvailable } from "./speech.js";
 
@@ -8,8 +8,16 @@ const el = (id) => document.getElementById(id);
 const screens = {
   home: el("screen-home"),
   lesson: el("screen-lesson"),
-  done: el("screen-done")
+  done: el("screen-done"),
+  review: el("screen-review")
 };
+
+function timeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
 
 function showScreen(name) {
   Object.values(screens).forEach(s => s.classList.add("hidden"));
@@ -115,7 +123,7 @@ function renderHome() {
 
   const day = nextDay();
   if (!day) {
-    el("home-greeting").textContent = `Uau! Você terminou todos os dias disponíveis, ${TEACHER_NAME} está impressionada.`;
+    el("home-greeting").textContent = `Uau, ${STUDENT_NAME}! Você terminou todos os dias disponíveis, ${TEACHER_NAME} está impressionada.`;
     el("home-day-title").textContent = "Volte em breve por mais dias 🎉";
     el("home-day-sub").textContent = "Enquanto isso, use 'Rever dias concluídos' para praticar de novo.";
     el("btn-start").classList.add("hidden");
@@ -123,8 +131,8 @@ function renderHome() {
   }
   el("btn-start").classList.remove("hidden");
   el("home-greeting").textContent = day.id === 1
-    ? `Oi, eu sou a ${TEACHER_NAME}. Pronta para sua primeira aula?`
-    : "Oi! Pronta para a aula de hoje?";
+    ? `Oi, ${STUDENT_NAME}! Eu sou a ${TEACHER_NAME}. Pronta para sua primeira aula?`
+    : `${timeGreeting()}, ${STUDENT_NAME}!`;
   el("home-day-title").textContent = `Dia ${day.id} · ${day.title}`;
   el("home-day-sub").textContent = "~20 minutos · fone no ouvido, sem precisar olhar pra tela";
 }
@@ -136,20 +144,28 @@ el("btn-start").addEventListener("click", () => {
 
 el("btn-review").addEventListener("click", () => {
   const completed = CURRICULUM.filter(d => state.completedDays.includes(d.id));
+  const list = el("review-list");
+  list.innerHTML = "";
   if (completed.length === 0) {
-    setFeedbackHome("Você ainda não concluiu nenhum dia.");
-    return;
+    const empty = document.createElement("p");
+    empty.className = "review-empty";
+    empty.textContent = "Você ainda não concluiu nenhum dia.";
+    list.appendChild(empty);
+  } else {
+    for (const day of completed) {
+      const btn = document.createElement("button");
+      btn.className = "review-item";
+      btn.innerHTML = `<span class="review-day-num">${day.id}</span><span class="review-day-title">${day.title}</span>`;
+      btn.addEventListener("click", () => startLesson(day, true));
+      list.appendChild(btn);
+    }
   }
-  const list = completed.map(d => `${d.id}. ${d.title}`).join("\n");
-  const pick = window.prompt(`Qual dia revisar? Digite o número:\n${list}`);
-  const dayId = Number(pick);
-  const day = CURRICULUM.find(d => d.id === dayId);
-  if (day) startLesson(day, true);
+  showScreen("review");
 });
 
-function setFeedbackHome(msg) {
-  el("stt-hint").textContent = msg;
-}
+el("btn-review-back").addEventListener("click", () => {
+  showScreen("home");
+});
 
 async function startLesson(day, isReview) {
   paused = false;

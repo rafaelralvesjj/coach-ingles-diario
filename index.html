@@ -1,7 +1,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Coach de Inglês Diário</title>
-<meta name="theme-color" content="#146c5c">
+<title>Coach de Inglês da Denize</title>
+<meta name="theme-color" content="#8b5cf6">
 <meta name="description" content="Aula diária de inglês de 20 minutos para o seu trajeto até o trabalho.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -28,6 +28,17 @@
     </div>
 
     <p class="hint" id="stt-hint"></p>
+  </section>
+
+  <!-- TELA DE REVISÃO -->
+  <section id="screen-review" class="screen hidden">
+    <header class="topbar">
+      <button id="btn-review-back" class="btn-icon" aria-label="Voltar">←</button>
+      <span class="phase-label">Rever dias</span>
+      <span style="width:44px"></span>
+    </header>
+
+    <div class="review-list" id="review-list"></div>
   </section>
 
   <!-- TELA DA AULA -->
