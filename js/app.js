@@ -214,6 +214,7 @@ function renderHome() {
     renderPaceScreen();
     return;
   }
+  showScreen("home");
 
   const streak = getStreak(state);
   el("streak-badge").textContent = `🔥 ${streak}`;
