@@ -57,11 +57,10 @@ export function removeCharacter(state, ambienteId, slotId) {
   saveState(state);
 }
 
-export function markSceneComplete(state, sceneId) {
+// Conta como prática do dia (mantém a sequência), independente de ter tido
+// ajuda ou não — o que importa aqui é o hábito de praticar todo dia.
+export function recordDailyPractice(state) {
   const today = todayISO();
-  if (!state.completedScenes.includes(sceneId)) {
-    state.completedScenes.push(sceneId);
-  }
   if (state.lastCompletedDate === today) {
     // já praticou hoje, não duplica streak
   } else if (state.lastCompletedDate && daysBetween(state.lastCompletedDate, today) === 1) {
@@ -70,6 +69,15 @@ export function markSceneComplete(state, sceneId) {
     state.streak = 1;
   }
   state.lastCompletedDate = today;
+  saveState(state);
+}
+
+// Só marca a cena como "tarefa concluída" (dominada) quando ela termina o
+// diálogo inteiro sem nenhuma ajuda.
+export function markSceneMastered(state, sceneId) {
+  if (!state.completedScenes.includes(sceneId)) {
+    state.completedScenes.push(sceneId);
+  }
   saveState(state);
 }
 

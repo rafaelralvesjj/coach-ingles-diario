@@ -104,6 +104,65 @@ export function listen(targetPhrase, { timeoutMs = 6000 } = {}) {
   });
 }
 
+// listenForResponse: como listen(), mas detecta se ela DEMOROU pra começar a
+// falar (hesitação) — usado no diálogo pra decidir se precisa entrar a "ajuda".
+// graceMs: tempo máximo esperando ela começar a falar antes de considerar que
+// ela travou. timeoutMs: tempo total máximo pra terminar a frase.
+// Retorna { supported, startedSpeaking, transcript, matched }.
+export function listenForResponse(targetPhrase, { graceMs = 1500, timeoutMs = 7000 } = {}) {
+  if (!sttAvailable) {
+    return new Promise((resolve) => {
+      setTimeout(() => resolve({ supported: false, startedSpeaking: false, transcript: "", matched: null }), timeoutMs);
+    });
+  }
+  return new Promise((resolve) => {
+    const recognition = new SpeechRecognitionAPI();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 3;
+    let done = false;
+    let startedSpeaking = false;
+
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(graceTimer);
+      clearTimeout(totalTimer);
+      try { recognition.stop(); } catch {}
+      resolve(result);
+    };
+
+    const graceTimer = setTimeout(() => {
+      if (!startedSpeaking) {
+        finish({ supported: true, startedSpeaking: false, transcript: "", matched: false });
+      }
+    }, graceMs);
+
+    const totalTimer = setTimeout(() => {
+      finish({ supported: true, startedSpeaking, transcript: "", matched: false });
+    }, timeoutMs);
+
+    recognition.onspeechstart = () => { startedSpeaking = true; };
+
+    recognition.onresult = (event) => {
+      const result = event.results[event.results.length - 1];
+      startedSpeaking = true;
+      if (!result.isFinal) return;
+      const alternatives = Array.from(result).map(r => r.transcript);
+      const matched = alternatives.some(alt => fuzzyMatch(alt, targetPhrase));
+      finish({ supported: true, startedSpeaking: true, transcript: alternatives[0] || "", matched });
+    };
+    recognition.onerror = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false });
+    recognition.onend = () => finish({ supported: true, startedSpeaking, transcript: "", matched: false });
+
+    try {
+      recognition.start();
+    } catch {
+      finish({ supported: true, startedSpeaking: false, transcript: "", matched: false });
+    }
+  });
+}
+
 function normalize(s) {
   return s
     .toLowerCase()

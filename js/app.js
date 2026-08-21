@@ -1,6 +1,6 @@
 import { AMBIENTES, STUDENT_NAME } from "./ambientes.js";
-import { loadState, saveState, getCharacter, setCharacter, removeCharacter, markSceneComplete, getStreak } from "./state.js";
-import { speak, stopSpeaking, listen, sttAvailable } from "./speech.js";
+import { loadState, saveState, getCharacter, setCharacter, removeCharacter, recordDailyPractice, markSceneMastered, getStreak } from "./state.js";
+import { speak, stopSpeaking, listen, listenForResponse, sttAvailable } from "./speech.js";
 
 const state = loadState();
 
@@ -45,6 +45,13 @@ let paused = false;
 let skipCurrentStep = null;
 let currentReplay = null;
 
+// --- Controle de "tarefa concluída sem ajuda" ---
+// Só marcamos uma cena como concluída quando ela responde tudo sozinha, no
+// tempo certo, sem precisar de nenhuma dica. Pular um passo durante o
+// diálogo (não durante o treino) também conta como ajuda.
+let inDialoguePhase = false;
+let sceneHadHelp = false;
+
 function setPauseUI() {
   el("btn-pause").textContent = paused ? "▶" : "⏸";
 }
@@ -57,6 +64,7 @@ el("btn-pause").addEventListener("click", () => {
 });
 
 el("btn-skip").addEventListener("click", () => {
+  if (inDialoguePhase) sceneHadHelp = true;
   if (skipCurrentStep) skipCurrentStep();
 });
 
@@ -138,9 +146,12 @@ function renderHome() {
   const grid = el("ambiente-grid");
   grid.innerHTML = "";
   for (const ambiente of AMBIENTES) {
+    const masteredCount = ambiente.scenes.filter(s => state.completedScenes.includes(s.id)).length;
+    const badge = masteredCount > 0 ? `<span class="ambiente-badge">🏆 ${masteredCount}/${ambiente.scenes.length}</span>` : "";
     const card = document.createElement("button");
     card.className = "ambiente-card";
     card.innerHTML = `
+      ${badge}
       <span class="ambiente-icon">${ambiente.icon}</span>
       <span class="ambiente-title">${ambiente.title}</span>
       <span class="ambiente-subtitle">${ambiente.subtitle}</span>
@@ -306,6 +317,7 @@ function activeBeatsFor(ambiente, scene) {
 async function startScene(ambiente, scene, isReview) {
   paused = false;
   setPauseUI();
+  sceneHadHelp = false;
   showScreen("lesson");
   const beats = activeBeatsFor(ambiente, scene);
   await runTraining(ambiente, scene, beats);
@@ -319,6 +331,7 @@ function characterFor(ambiente, beat) {
 }
 
 async function runTraining(ambiente, scene, beats) {
+  inDialoguePhase = false;
   setPhase(0);
   setMic(false);
   setCaption(scene.title, "");
@@ -346,9 +359,10 @@ async function runTraining(ambiente, scene, beats) {
 }
 
 async function runDialogue(ambiente, scene, beats) {
+  inDialoguePhase = true;
   setPhase(1);
   setFeedback("");
-  await runStep(() => say("Agora vamos para o diálogo de verdade. Preste atenção e responda quando for sua vez.", { lang: "pt-BR" }));
+  await runStep(() => say(`Agora vamos para o diálogo de verdade, ${STUDENT_NAME}. ${characterFor(ambiente, beats[0])?.name || "Eles"} vão começar, e você responde quando for sua vez. Se você travar, eu te ajudo.`, { lang: "pt-BR" }));
 
   for (const beat of beats) {
     const character = characterFor(ambiente, beat);
@@ -359,41 +373,81 @@ async function runDialogue(ambiente, scene, beats) {
     await runStep(() => say(beat.line_en, { lang: "en-US", voiceKey: character.name }));
 
     setMic(true);
-    const result = await runStep(() => listen(beat.response_en, { timeoutMs: 6000 }));
+    const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 1500, timeoutMs: 7000 }));
     setMic(false);
 
-    if (result && result.supported && result.matched) {
-      setFeedback("✅ Perfeito!");
-      await runStep(() => say("Perfect!", { lang: "en-US" }));
-    } else if (result && result.supported) {
-      setCaption(character.name, beat.response_en);
-      setFeedback(`Quase lá! A frase é: "${beat.response_en}"`);
-      await runStep(() => say(beat.response_en, { lang: "en-US" }));
-    } else {
+    if (!result || !result.supported) {
+      // sem reconhecimento de fala no navegador: modo "repita comigo",
+      // nunca pode ser certificado como "sem ajuda".
+      sceneHadHelp = true;
       setCaption(character.name, beat.response_en);
       setFeedback("Repita em voz alta.");
+      await runStep(() => say(beat.response_en, { lang: "en-US" }));
+      continue;
+    }
+
+    if (!result.startedSpeaking) {
+      // ela hesitou — entra a ajuda
+      sceneHadHelp = true;
+      setFeedback("💡 Ajuda");
+      setCaption(`${STUDENT_NAME}, você deveria responder:`, beat.response_en);
+      await runStep(() => say(`${STUDENT_NAME}, você deveria responder:`, { lang: "pt-BR" }));
+      await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.65 }));
+      await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.95 }));
+
+      setFeedback("Agora tente você:");
+      setMic(true);
+      const retry = await runStep(() => listen(beat.response_en, { timeoutMs: 7000 }));
+      setMic(false);
+
+      if (retry && retry.matched) {
+        setFeedback("✅ Boa! (essa cena teve ajuda)");
+        await runStep(() => say("Great!", { lang: "en-US" }));
+      } else {
+        setFeedback(`Tudo bem. A frase era: "${beat.response_en}"`);
+      }
+      continue;
+    }
+
+    if (result.matched) {
+      setFeedback("✅ Perfeito!");
+      await runStep(() => say("Perfect!", { lang: "en-US" }));
+    } else {
+      // ela tentou, mas não bateu com a frase esperada — também conta como ajuda
+      sceneHadHelp = true;
+      setCaption(character.name, beat.response_en);
+      setFeedback(`Quase lá! A frase é: "${beat.response_en}"`);
       await runStep(() => say(beat.response_en, { lang: "en-US" }));
     }
   }
 }
 
 async function runWrapup(ambiente, scene, isReview) {
+  inDialoguePhase = false;
   setPhase(2);
   setMic(false);
   setCaption("", "");
   setFeedback("");
-  await runStep(() => say(scene.recap_pt, { lang: "pt-BR" }));
 
-  if (!isReview) {
-    markSceneComplete(state, scene.id);
+  const wasMasteredBefore = state.completedScenes.includes(scene.id);
+  const justMastered = !sceneHadHelp && !wasMasteredBefore;
+
+  if (!isReview) recordDailyPractice(state);
+  if (!sceneHadHelp) markSceneMastered(state, scene.id);
+  else saveState(state);
+
+  if (sceneHadHelp) {
+    await runStep(() => say(`${scene.recap_pt} Você teve ajuda dessa vez — tenta de novo pra concluir essa cena sem nenhuma ajuda!`, { lang: "pt-BR" }));
   } else {
-    saveState(state);
+    await runStep(() => say(`${scene.recap_pt} E o melhor: você fez tudo sozinha, sem nenhuma ajuda!`, { lang: "pt-BR" }));
   }
 
   const streak = getStreak(state);
-  el("done-title").textContent = isReview ? "Revisão concluída!" : "Cena concluída!";
+  el("done-title").textContent = sceneHadHelp ? "Cena praticada" : (justMastered ? "Tarefa concluída! 🏆" : "Cena dominada de novo! 🏆");
   el("done-streak").textContent = `Sequência: ${streak} dia${streak === 1 ? "" : "s"}`;
-  el("done-recap").textContent = scene.recap_pt;
+  el("done-recap").textContent = sceneHadHelp
+    ? `${scene.recap_pt} Você teve ajuda — pratique de novo sem ajuda pra concluir essa tarefa.`
+    : `${scene.recap_pt} Você concluiu sem nenhuma ajuda!`;
   showScreen("done");
 }
 

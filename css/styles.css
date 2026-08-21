@@ -289,6 +289,7 @@ html, body {
 }
 
 .ambiente-card {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid rgba(199, 183, 251, 0.15);
   border-radius: 18px;
@@ -300,6 +301,18 @@ html, body {
   text-align: center;
   color: var(--text);
   cursor: pointer;
+}
+
+.ambiente-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--gradient);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: 999px;
 }
 
 .ambiente-card:active { transform: scale(0.97); }
