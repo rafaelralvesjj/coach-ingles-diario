@@ -560,6 +560,7 @@ async function runDialogue(ambiente, scene, beats) {
       sceneNotVerifiable = true;
       setCaption(character.name, beat.response_en);
       setFeedback("Repita em voz alta.");
+      await runStep(() => say("Repita:", { lang: "pt-BR" }));
       await runStep(() => say(beat.response_en, { lang: "en-US" }));
       continue;
     }
@@ -574,6 +575,7 @@ async function runDialogue(ambiente, scene, beats) {
       await runStep(() => say(beat.response_en, { lang: "en-US", rate: 0.95 }));
 
       setFeedback("Agora tente você:");
+      await runStep(() => say("Agora tente você.", { lang: "pt-BR" }));
       setMic(true);
       const retry = await runStep(() => listen(beat.response_en, { timeoutMs: 7000 }));
       setMic(false);
@@ -583,6 +585,7 @@ async function runDialogue(ambiente, scene, beats) {
         await runStep(() => say("Great!", { lang: "en-US" }));
       } else {
         setFeedback(`Tudo bem. A frase era: "${beat.response_en}"`);
+        await runStep(() => say("Tudo bem, vamos continuar.", { lang: "pt-BR" }));
       }
       continue;
     }
