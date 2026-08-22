@@ -63,7 +63,7 @@ let sceneStartTime = 0;
 let responseLog = []; // [{ phrase, quality: 'bom'|'medio'|'ruim' }], uma por frase respondida
 
 function classifyQuality(result) {
-  if (!result || !result.supported) return "ruim";
+  if (!result || !result.supported) return "naoverificavel";
   if (!result.startedSpeaking) return "ruim";
   const ratio = result.ratio || 0;
   if (ratio >= 0.85) return "bom";
@@ -605,8 +605,13 @@ async function runWrapup(ambiente, scene, isReview) {
 
   const passedHelp = helpCount === 0;
   const passedTime = elapsedMs <= TASK_TIME_LIMIT_MS;
-  const passedQuality = percent >= QUALITY_PASS_PERCENT;
-  const taskCompleted = passedHelp && passedTime && passedQuality && !sceneNotVerifiable;
+  // Quando o navegador não suporta reconhecimento de voz (ex.: iPhone —
+  // nenhum navegador ali suporta, é limitação da Apple, não do aparelho),
+  // não dá pra avaliar pronúncia de verdade. Esse critério não conta contra
+  // ela nesse caso, pra não travar o progresso pra sempre num aparelho onde
+  // é fisicamente impossível passar.
+  const passedQuality = sceneNotVerifiable ? true : percent >= QUALITY_PASS_PERCENT;
+  const taskCompleted = passedHelp && passedTime && passedQuality;
 
   const levelBefore = getLevelInfo(state.completedScenes.length);
 
@@ -619,13 +624,14 @@ async function runWrapup(ambiente, scene, isReview) {
 
   let recapMsg;
   if (taskCompleted) {
-    recapMsg = `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos, com ${percent}% de qualidade na pronúncia! Parabéns, você está evoluindo.`;
+    recapMsg = sceneNotVerifiable
+      ? `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos. Esse aparelho não consegue verificar sua pronúncia automaticamente, mas continue repetindo as frases em voz alta pra praticar mesmo assim. Parabéns, você está evoluindo.`
+      : `${scene.recap_pt} Você concluiu essa tarefa: sem ajuda, em ${elapsedMin} minutos, com ${percent}% de qualidade na pronúncia! Parabéns, você está evoluindo.`;
   } else {
     const reasons = [];
-    if (sceneNotVerifiable) reasons.push("seu navegador não consegue verificar sua pronúncia, então essa cena não pode virar tarefa concluída neste aparelho");
     if (!passedHelp) reasons.push(`você precisou de ajuda ${helpCount} ${helpCount === 1 ? "vez" : "vezes"}`);
     if (!passedTime) reasons.push(`você passou de 20 minutos (levou ${elapsedMin} minutos)`);
-    if (!passedQuality) reasons.push(`sua pronúncia ficou em ${percent}%, abaixo dos ${QUALITY_PASS_PERCENT}% necessários`);
+    if (!sceneNotVerifiable && !passedQuality) reasons.push(`sua pronúncia ficou em ${percent}%, abaixo dos ${QUALITY_PASS_PERCENT}% necessários`);
     recapMsg = `${scene.recap_pt} Essa tarefa ainda não fechou porque ${reasons.join(", e ")}. Continue praticando!`;
   }
   await runStep(() => say(recapMsg, { lang: "pt-BR" }));
@@ -641,18 +647,22 @@ async function runWrapup(ambiente, scene, isReview) {
   el("done-training-summary").textContent =
     `${ambiente.title} · ${scene.title}. Use isso quando: ${ambiente.subtitle.toLowerCase()}.`;
 
+  const qualityRow = sceneNotVerifiable
+    ? `<div class="check-row ok">ℹ️ Pronúncia: não verificável nesse navegador</div>`
+    : `<div class="check-row ${passedQuality ? "ok" : "fail"}">${passedQuality ? "✅" : "❌"} Pronúncia: ${percent}%</div>`;
   const checklist = el("task-checklist");
   checklist.innerHTML = `
     <div class="check-row ${passedHelp ? "ok" : "fail"}">${passedHelp ? "✅" : "❌"} Ajudas usadas: ${helpCount}</div>
     <div class="check-row ${passedTime ? "ok" : "fail"}">${passedTime ? "✅" : "❌"} Dentro de 20 min (${elapsedMin} min)</div>
-    <div class="check-row ${passedQuality ? "ok" : "fail"}">${passedQuality ? "✅" : "❌"} Pronúncia: ${percent}%</div>
+    ${qualityRow}
   `;
 
+  const qualityLabels = { bom: "Bom", medio: "Médio", ruim: "Ruim", naoverificavel: "Não avaliado" };
   const qualityList = el("quality-list");
   qualityList.innerHTML = responseLog.map(r => `
     <div class="quality-item">
       <span class="quality-phrase">${r.phrase}</span>
-      <span class="quality-tag ${r.quality}">${r.quality === "bom" ? "Bom" : r.quality === "medio" ? "Médio" : "Ruim"}</span>
+      <span class="quality-tag ${r.quality}">${qualityLabels[r.quality]}</span>
     </div>
   `).join("");
 
