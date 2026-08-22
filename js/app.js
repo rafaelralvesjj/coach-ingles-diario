@@ -55,6 +55,7 @@ let currentReplay = null;
 // (não durante o treino) também conta como ajuda.
 const TASK_TIME_LIMIT_MS = 20 * 60 * 1000; // 20 minutos
 const QUALITY_PASS_PERCENT = 70; // % mínimo de aproveitamento de pronúncia
+const MAX_ATTEMPTS = 3; // tentativas totais por fala (1ª + até 2 retentativas com ajuda)
 
 let inDialoguePhase = false;
 let helpCount = 0; // quantas vezes o sistema precisou intervir com ajuda
@@ -548,12 +549,15 @@ async function runDialogue(ambiente, scene, beats) {
     await runStep(() => say(beat.line_en, { lang: "en-US", voiceKey: character.name }));
 
     setMic(true);
-    const result = await runStep(() => listenForResponse(beat.response_en, { graceMs: 3000, timeoutMs: 7000 }));
+    const firstResult = await runStep(() => listenForResponse(beat.response_en, { graceMs: 3000, timeoutMs: 7000 }));
     setMic(false);
 
-    responseLog.push({ phrase: beat.response_en, quality: classifyQuality(result) });
+    // A qualidade registrada é sempre da 1ª tentativa — é ela que mede a
+    // pronúncia de verdade. As retentativas abaixo servem só pra validar
+    // se a resposta bate antes de seguir, não pra "melhorar a nota".
+    responseLog.push({ phrase: beat.response_en, quality: classifyQuality(firstResult) });
 
-    if (!result || !result.supported) {
+    if (!firstResult || !firstResult.supported) {
       // sem reconhecimento de fala no navegador: modo "repita comigo".
       // Não dá pra verificar o que ela falou, então essa cena nunca pode
       // ser certificada como tarefa concluída neste aparelho.
@@ -565,9 +569,15 @@ async function runDialogue(ambiente, scene, beats) {
       continue;
     }
 
-    if (!result.startedSpeaking) {
-      // ela hesitou — entra a ajuda
-      helpCount++;
+    // Valida a resposta de verdade: se não bateu (seja porque ela hesitou
+    // ou porque respondeu errado sem hesitar), ensina a frase certa e dá
+    // outra chance — até MAX_ATTEMPTS tentativas no total, pra nunca deixar
+    // ela presa numa fala pra sempre enquanto dirige.
+    let matched = !!firstResult.matched;
+    let attempt = 1;
+    if (!matched) helpCount++;
+
+    while (!matched && attempt < MAX_ATTEMPTS) {
       setFeedback("💡 Ajuda");
       setCaption(`${STUDENT_NAME}, você deveria responder:`, beat.response_en);
       await runStep(() => say(`${STUDENT_NAME}, você deveria responder:`, { lang: "pt-BR" }));
@@ -580,26 +590,18 @@ async function runDialogue(ambiente, scene, beats) {
       const retry = await runStep(() => listen(beat.response_en, { timeoutMs: 7000 }));
       setMic(false);
 
-      if (retry && retry.matched) {
-        setFeedback("✅ Boa! (essa cena teve ajuda)");
-        await runStep(() => say("Great!", { lang: "en-US" }));
-      } else {
-        setFeedback(`Tudo bem. A frase era: "${beat.response_en}"`);
-        await runStep(() => say("Tudo bem, vamos continuar.", { lang: "pt-BR" }));
-      }
-      continue;
+      matched = !!(retry && retry.matched);
+      attempt++;
     }
 
-    if (result.matched) {
-      setFeedback("✅ Perfeito!");
-      await runStep(() => say("Perfect!", { lang: "en-US" }));
+    if (matched) {
+      setFeedback(attempt === 1 ? "✅ Perfeito!" : "✅ Boa! (precisou de ajuda)");
+      await runStep(() => say(attempt === 1 ? "Perfect!" : "Great!", { lang: "en-US" }));
     } else {
-      // ela tentou sozinha, só não bateu certinho — isso pesa na qualidade
-      // da pronúncia (critério 3), mas não conta como "ajuda" (critério 1):
-      // ninguém interveio, ela só errou por conta própria.
+      // esgotou as tentativas — segue em frente pra não travar o diálogo.
       setCaption(character.name, beat.response_en);
-      setFeedback(`Quase lá! A frase é: "${beat.response_en}"`);
-      await runStep(() => say(beat.response_en, { lang: "en-US" }));
+      setFeedback(`Tudo bem. A frase era: "${beat.response_en}"`);
+      await runStep(() => say(`Tudo bem, a frase era: ${beat.response_en}. Vamos continuar.`, { lang: "pt-BR" }));
     }
   }
 }
