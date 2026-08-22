@@ -2,7 +2,7 @@ import { AMBIENTES, STUDENT_NAME } from "./ambientes.js";
 import {
   loadState, saveState, getCharacter, setCharacter, removeCharacter, canRemoveCharacter,
   recordDailyPractice, markSceneAttempted, markSceneMastered, getStreak,
-  setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS
+  setPace, getWeeklyMasteryCount, getLevelInfo, LEVELS, PACE_OPTIONS, resetState
 } from "./state.js";
 import { speak, stopSpeaking, listen, listenForResponse, listenRaw, normalizeText, sttAvailable, hasVoiceFor } from "./speech.js";
 
@@ -207,6 +207,13 @@ function renderPaceScreen() {
 
 el("btn-change-pace").addEventListener("click", () => renderPaceScreen());
 
+el("btn-reset-progress").addEventListener("click", () => {
+  const sure = confirm("Isso vai apagar todo o progresso salvo NESSE aparelho (sequência, nível, personagens e cenas concluídas). Progresso em outros aparelhos não é afetado. Quer continuar?");
+  if (!sure) return;
+  resetState();
+  location.reload();
+});
+
 // ---------- TELA INICIAL ----------
 
 function renderHome() {
@@ -287,9 +294,15 @@ el("btn-review-back").addEventListener("click", () => showScreen("home"));
 
 // ---------- TELA DE PERSONAGENS ----------
 
+// Prioriza a próxima cena ainda não dominada desse ambiente; se ela já
+// completou todas, volta pra primeira (aí é só repetição/revisão mesmo).
+function nextSceneFor(ambiente) {
+  return ambiente.scenes.find((s) => !state.completedScenes.includes(s.id)) || ambiente.scenes[0];
+}
+
 function openAmbiente(ambiente) {
   currentAmbiente = ambiente;
-  currentScene = ambiente.scenes[0];
+  currentScene = nextSceneFor(ambiente);
   renderCharacters();
   renderScenePicker();
   updateSkipTrainingButton();
@@ -707,7 +720,7 @@ async function postCompletionFlow() {
 
     if (num) {
       const ambiente = AMBIENTES[num - 1];
-      const scene = ambiente.scenes[0];
+      const scene = nextSceneFor(ambiente);
       const skipTraining = state.attemptedScenes.includes(scene.id);
       if (state.attemptedScenes.includes(scene.id) && !state.completedScenes.includes(scene.id)) {
         await runStep(() => say("Como você não tinha concluído esse diálogo, vamos começar ele do início de novo.", { lang: "pt-BR" }));

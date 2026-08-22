@@ -125,6 +125,11 @@ html, body {
   margin-top: 10px;
 }
 
+.btn-secondary-danger {
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
 .btn-icon {
   background: var(--bg-elevated);
   border: none;

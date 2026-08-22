@@ -65,6 +65,13 @@ export function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+// Apaga todo o progresso salvo NESSE aparelho/navegador (sequência, níveis,
+// personagens, cenas concluídas). Cada aparelho tem seu próprio localStorage
+// isolado — resetar aqui nunca afeta o progresso salvo em outro aparelho.
+export function resetState() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
 // Retorna { name, roleLabel } de quem ocupa esse slot. Retorna null se for
 // um slot que começa vazio (sem defaultName) e ela ainda não adicionou
 // ninguém, OU se ela removeu explicitamente o personagem padrão desse slot
